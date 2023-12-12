@@ -1,0 +1,283 @@
+{
+    "doors": [],
+    "metadata": {
+        "agent": {
+            "horizon": 30,
+            "position": {
+                "x": 3.5,
+                "y": 0.95,
+                "z": 2.0
+            },
+            "rotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+            },
+            "standing": true
+        },
+        "roomSpecId": "Living Room",
+        "schema": "1.0.0",
+        "warnings": {},
+        "agentPoses": {
+            "arm": {
+                "horizon": 30,
+                "position": {
+                    "x": 3.5,
+                    "y": 0.95,
+                    "z": 2.0
+                },
+                "rotation": {
+                    "x": 0,
+                    "y": 90,
+                    "z": 0
+                },
+                "standing": true
+            },
+            "default": {
+                "horizon": 30,
+                "position": {
+                    "x": 3.5,
+                    "y": 0.95,
+                    "z": 2.0
+                },
+                "rotation": {
+                    "x": 0,
+                    "y": 90,
+                    "z": 0
+                },
+                "standing": true
+            },
+            "locobot": {
+                "horizon": 30,
+                "position": {
+                    "x": 3.5,
+                    "y": 0.95,
+                    "z": 2.0
+                },
+                "rotation": {
+                    "x": 0,
+                    "y": 90,
+                    "z": 0
+                }
+            },
+            "stretch": {
+                "horizon": 30,
+                "position": {
+                    "x": 3.5,
+                    "y": 0.95,
+                    "z": 2.0
+                },
+                "rotation": {
+                    "x": 0,
+                    "y": 90,
+                    "z": 0
+                },
+                "standing": true
+            }
+        }
+    },
+    "objects": [],
+    "proceduralParameters": {
+        "ceilingColor": {
+            "b": 0.3058823529411765,
+            "g": 0.3843137254901961,
+            "r": 0.42745098039215684
+        },
+        "ceilingMaterial": {
+            "name": "PureWhite",
+            "color": {
+                "b": 0.3058823529411765,
+                "g": 0.3843137254901961,
+                "r": 0.42745098039215684
+            }
+        },
+        "floorColliderThickness": 1.0,
+        "lights": [{
+            "id": "light|living room",
+            "type": "point",
+            "position": {
+                "x": 0,
+                "y": 5.0,
+                "z": 0
+            },
+            "intensity": 1.0,
+            "range": 15,
+            "rgb": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0
+            },
+            "shadow": {
+                "type": "Soft",
+                "strength": 1,
+                "normalBias": 0,
+                "bias": 0.05,
+                "nearPlane": 0.2,
+                "resolution": "FromQualitySettings"
+            },
+            "roomId": "living room",
+            "layer": "Procedural0",
+            "cullingMaskOff": [
+                "Procedural1",
+                "Procedural2",
+                "Procedural3"
+            ],
+            "rotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+            }
+        },
+        {
+            "id": "light|living room",
+            "type": "point",
+            "position": {
+                "x": 5.0,
+                "y": 2.5,
+                "z": 5.0
+            },
+            "intensity": 1.0,
+            "range": 15,
+            "rgb": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0
+            },
+            "shadow": {
+                "type": "Soft",
+                "strength": 1,
+                "normalBias": 0,
+                "bias": 0.05,
+                "nearPlane": 0.2,
+                "resolution": "FromQualitySettings"
+            },
+            "roomId": "living room",
+            "layer": "Procedural0",
+            "cullingMaskOff": [
+                "Procedural1",
+                "Procedural2",
+                "Procedural3"
+            ],
+            "rotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+            }
+        },
+        {
+            "id": "light|living room",
+            "type": "point",
+            "position": {
+                "x": -5.0,
+                "y": 2.5,
+                "z": 5.0
+            },
+            "intensity": 1.0,
+            "range": 15,
+            "rgb": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0
+            },
+            "shadow": {
+                "type": "Soft",
+                "strength": 1,
+                "normalBias": 0,
+                "bias": 0.05,
+                "nearPlane": 0.2,
+                "resolution": "FromQualitySettings"
+            },
+            "roomId": "living room",
+            "layer": "Procedural0",
+            "cullingMaskOff": [
+                "Procedural1",
+                "Procedural2",
+                "Procedural3"
+            ],
+            "rotation": {
+                "x": 6,
+                "y": -166,
+                "z": 0
+            }
+        },
+        {
+            "id": "light|living room",
+            "type": "point",
+            "position": {
+                "x": -5.0,
+                "y": 2.5,
+                "z": -5.0
+            },
+            "intensity": 1.0,
+            "range": 15,
+            "rgb": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0
+            },
+            "shadow": {
+                "type": "Soft",
+                "strength": 1,
+                "normalBias": 0,
+                "bias": 0.05,
+                "nearPlane": 0.2,
+                "resolution": "FromQualitySettings"
+            },
+            "roomId": "living room",
+            "layer": "Procedural0",
+            "cullingMaskOff": [
+                "Procedural1",
+                "Procedural2",
+                "Procedural3"
+            ],
+            "rotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+            }
+        },
+        {
+            "id": "light|living room",
+            "type": "point",
+            "position": {
+                "x": 5.0,
+                "y": 2.5,
+                "z": -5.0
+            },
+            "intensity": 1.0,
+            "range": 15,
+            "rgb": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0
+            },
+            "shadow": {
+                "type": "Soft",
+                "strength": 1,
+                "normalBias": 0,
+                "bias": 0.05,
+                "nearPlane": 0.2,
+                "resolution": "FromQualitySettings"
+            },
+            "roomId": "living room",
+            "layer": "Procedural0",
+            "cullingMaskOff": [
+                "Procedural1",
+                "Procedural2",
+                "Procedural3"
+            ],
+            "rotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+            }
+        }
+    ],
+        "receptacleHeight": 0.7,
+        "reflections": [],
+        "skyboxId": "SkyAlbany"
+    },
+    "rooms": [],
+    "walls": [],
+    "windows": []
+}
