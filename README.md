@@ -21,9 +21,9 @@ pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+6f165f
 ```
 
 ## Data
-Download the data from [here](https://drive.google.com/file/d/1RS6ppTv7BlpE_YZtF5AXT360jwK0HU5u/view?usp=sharing) and extract it to the `data/` folder, or use the following command:
+Download the data from [here](https://drive.google.com/file/d/1MQbFbNfTz94x8Pxfkgbohz4l46O5e3G1/view?usp=sharing) and extract it to the `data/` folder, or use the following command:
 ```
-FILE_ID=1RS6ppTv7BlpE_YZtF5AXT360jwK0HU5u
+FILE_ID=1MQbFbNfTz94x8Pxfkgbohz4l46O5e3G1
 CONFIRM=$(curl -sc /tmp/gcookie "https://drive.google.com/uc?export=download&id=${FILE_ID}" | grep -o 'confirm=[^&]*' | sed 's/confirm=//')
 wget --load-cookies /tmp/gcookie "https://drive.google.com/uc?export=download&confirm=${CONFIRM}&id=${FILE_ID}" -O data.zip && rm -rf /tmp/gcookie
 unzip data.zip
