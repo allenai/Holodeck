@@ -8,7 +8,7 @@
 </h5>
 
 <h4 align="center">
-  <a href="tbd">Paper</i></a> | <a href="https://yueyang1996.github.io/holodeck/">Project Page</i></a>
+  <a href="https://arxiv.org/abs/2312.09067">Paper</i></a> | <a href="https://yueyang1996.github.io/holodeck/">Project Page</i></a>
 </h4>
 
 ## Installation
@@ -41,8 +41,13 @@ To be noticed, our system is using `gpt-4-1106-preview`, please make sure you ha
 Please cite the following paper if you use this code in your work.
 
 ```bibtex
-@inproceedings{holodeck,
-  title={Language Guided Generation of 3D Embodied AI Environments}
+@misc{yang2023holodeck,
+      title={Holodeck: Language Guided Generation of 3D Embodied AI Environments}, 
+      author={Yue Yang and Fan-Yun Sun and Luca Weihs and Eli VanderBilt and Alvaro Herrasti and Winson Han and Jiajun Wu and Nick Haber and Ranjay Krishna and Lingjie Liu and Chris Callison-Burch and Mark Yatskar and Aniruddha Kembhavi and Christopher Clark},
+      year={2023},
+      eprint={2312.09067},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
 }
 ```
 <br />
