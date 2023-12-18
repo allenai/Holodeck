@@ -83,9 +83,6 @@ class FloorObjectGenerator():
             
             if self.constraint_type == "llm":
                 constraint_plan = self.llm(constraint_prompt)
-            elif self.constraint_type == "llm-milp":
-                constraint_plan = self.llm(constraint_prompt)
-                self.use_milp = True
             elif self.constraint_type in ["middle", "edge"]:
                 constraint_plan = ""
                 for object_name in object_names:
@@ -1057,7 +1054,6 @@ class DFS_Solver_Floor():
                                                                                      target_object_dim,
                                                                                      constraint['constraint']))
 
-                                                        
             result = milp_solve(soft_constraints_list, hard_constraints_list, verbose=False)
             if result is None or math.isnan(result) or math.isinf(result):
                 continue
@@ -1136,7 +1132,6 @@ class DFS_Solver_Floor():
         solutions_1 = self.place_alignment_center("center alignment", objects["sofa"], solutions_1)
         solutions_1 = self.place_distance("near", objects["sofa"], solutions_1)
         objects[f"coffee table"] = solutions_1[-1]
-        import pdb; pdb.set_trace()
         self.visualize_grid(room_poly, grid_points, objects)
 
 
@@ -1219,4 +1214,4 @@ class DFS_Solver_Floor():
 if __name__ == "__main__":
     solver = DFS_Solver_Floor(max_duration=30, grid_size=50)
     solver.test_dfs_placement()
-    # solver.test_milp_placement(simple=False, use_milp=True)
+    solver.test_milp_placement(simple=False, use_milp=True)

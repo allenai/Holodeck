@@ -4,6 +4,7 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 from modules.holodeck import Holodeck
 
+
 def generate_single_scene(args):
     folder_name = args.query.replace(" ", "_").replace("'", "")
     try:
@@ -27,6 +28,7 @@ def generate_single_scene(args):
         add_ceiling=ast.literal_eval(args.add_ceiling),
         add_time=ast.literal_eval(args.add_time),
         use_constraint=ast.literal_eval(args.use_constraint),
+        use_milp=ast.literal_eval(args.use_milp),
         random_selection=ast.literal_eval(args.random_selection)
     )
     print(f"Could not generate scene from {args.query}.")
@@ -73,6 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--add_ceiling", help = "Whether to add a ceiling to the scene.", default = "False")
     parser.add_argument("--add_time", help = "Whether to add the time to the scene name.", default = "True")
     parser.add_argument("--use_constraint", help = "Whether to use constraints.", default = "True")
+    parser.add_argument("--use_milp", help = "Whether to use mixed integer linear programming for the constraint satisfaction solver.", default = "True")
     parser.add_argument("--random_selection", help = "Whether to more random object selection, set to False will be more precise, True will be more diverse", default = "False")
     parser.add_argument("--used_assets", help = "a list of assets which we want to exclude from the scene", default = [])
     parser.add_argument("--single_room", help = "Whether to generate a single room scene.", default = "False")
