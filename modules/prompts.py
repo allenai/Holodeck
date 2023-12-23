@@ -73,7 +73,7 @@ Here are the constraints and their definitions:
     2) middle: not close to the edge of the room.
 
 2. distance constraint:
-    1) near, object: near to the other object, but with some distanbce, 50cm < distance < 150cm.
+    1) near, object: near to the other object, but with some distance, 50cm < distance < 150cm.
     2) far, object: far away from the other object, distance >= 150cm.
     
 3. position constraint:
