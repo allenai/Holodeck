@@ -17,3 +17,4 @@ openai==0.27.6
 langchain==0.0.171
 torch==1.13.1
 torchvision==0.14.1
+gurobipy==10.0.3
