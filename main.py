@@ -75,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--add_ceiling", help = "Whether to add a ceiling to the scene.", default = "False")
     parser.add_argument("--add_time", help = "Whether to add the time to the scene name.", default = "True")
     parser.add_argument("--use_constraint", help = "Whether to use constraints.", default = "True")
-    parser.add_argument("--use_milp", help = "Whether to use mixed integer linear programming for the constraint satisfaction solver.", default = "True")
+    parser.add_argument("--use_milp", help = "Whether to use mixed integer linear programming for the constraint satisfaction solver.", default = "False")
     parser.add_argument("--random_selection", help = "Whether to more random object selection, set to False will be more precise, True will be more diverse", default = "False")
     parser.add_argument("--used_assets", help = "a list of assets which we want to exclude from the scene", default = [])
     parser.add_argument("--single_room", help = "Whether to generate a single room scene.", default = "False")
