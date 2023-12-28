@@ -36,6 +36,7 @@ python main.py --query "a living room" --openai_api_key <OPENAI_API_KEY>
 ```
 To be noticed, our system is using `gpt-4-1106-preview`, please make sure you have access to it.
 
+The default layout solver is `DFS`. You must set `--use_milp` to `False` to use `DFS`.
 
 ## Citation
 Please cite the following paper if you use this code in your work.
