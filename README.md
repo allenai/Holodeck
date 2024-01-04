@@ -43,6 +43,27 @@ To be noticed, our system uses `gpt-4-1106-preview`, so please ensure you have a
 
 **Note:** To yield better layouts, use `DFS` as the solver. If you pull the repo before `12/28/2023`, you must set the [argument](https://github.com/allenai/Holodeck/blob/386b0a868def29175436dc3b1ed85b6309eb3cad/main.py#L78) `--use_milp` to `False` to use `DFS`.
 
+## Load the scene in Unity
+1. Install [Unity](https://unity.com/download) and select the editor version `2020.3.25f1`.
+2. Clone [AI2-THOR repository](https://github.com/allenai/ai2thor) and switch to the new_cam_adjust branch.
+```
+git clone https://github.com/allenai/ai2thor.git
+git checkout 6f165fdaf3cf2d03728f931f39261d14a67414d0
+```
+3. Reinstall some packages:
+```
+pip uninstall Werkzeug
+pip uninstall Flask
+pip install Werkzeug==2.0.1
+pip install Flask==2.0.1
+```
+3. Load `ai2thor/unity` as project in Unity and open `ai2thor/unity/Assets/Scenes/Procedural/Procedural.unity`.
+4. In the terminal, run [this python script](connect_to_unity.py):
+```
+python connect_to_unity --scene <SCENE_JSON_FILE_PATH>
+```
+5. Press the play button (the triangle) in Unity to view the scene.
+
 ## Citation
 Please cite the following paper if you use this code in your work.
 
