@@ -6,7 +6,11 @@ import compress_json
 from ai2thor.controller import Controller
 from ai2thor.hooks.procedural_asset_hook import ProceduralAssetHookRunner
 
-from holodeck.constants import HOLODECK_BASE_DATA_DIR, THOR_COMMIT_ID, OBJATHOR_ASSETS_DIR
+from holodeck.constants import (
+    HOLODECK_BASE_DATA_DIR,
+    THOR_COMMIT_ID,
+    OBJATHOR_ASSETS_DIR,
+)
 
 parser = ArgumentParser()
 parser.add_argument(

@@ -2,11 +2,33 @@ import random
 
 from procthor.utils.types import RGB, Vector3
 
-skyboxes = ["Sky1", "Sky2", "SkyAlbany", "SkyAlbanyHill", "SkyDalyCity", "SkyEmeryville", "SkyGarden", "SkyTropical",
-            "SkyGasworks", "SkyMosconeCenter", "SkyMountain", "SkyOakland", "SkySeaStacks", "SkySFCityHall", "Sky2Dusk",
-            "SkySFDowntown", "SkySFGarden", "SkySnow", "SkyNeighborhood", "SkySouthLakeUnion", "SkySunset", "SkyTreeFarm"]
+skyboxes = [
+    "Sky1",
+    "Sky2",
+    "SkyAlbany",
+    "SkyAlbanyHill",
+    "SkyDalyCity",
+    "SkyEmeryville",
+    "SkyGarden",
+    "SkyTropical",
+    "SkyGasworks",
+    "SkyMosconeCenter",
+    "SkyMountain",
+    "SkyOakland",
+    "SkySeaStacks",
+    "SkySFCityHall",
+    "Sky2Dusk",
+    "SkySFDowntown",
+    "SkySFGarden",
+    "SkySnow",
+    "SkyNeighborhood",
+    "SkySouthLakeUnion",
+    "SkySunset",
+    "SkyTreeFarm",
+]
 # timeOfDays = ["Midday", "GoldenHour", "BlueHour", "Midnight"]
 timeOfDays = ["Midday", "GoldenHour", "BlueHour"]
+
 
 def getSkybox(scene):
     skybox = random.choice(skyboxes)

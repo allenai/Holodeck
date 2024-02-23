@@ -109,14 +109,18 @@ class Holodeck:
             self.clip_model, self.clip_preprocess, self.clip_tokenizer, self.llm
         )
         self.window_generator = WindowGenerator(self.llm)
-        self.object_selector = ObjectSelector(object_retriever=self.object_retriever, llm=self.llm)
+        self.object_selector = ObjectSelector(
+            object_retriever=self.object_retriever, llm=self.llm
+        )
         self.floor_object_generator = FloorObjectGenerator(
             object_retriever=self.object_retriever, llm=self.llm
         )
         self.wall_object_generator = WallObjectGenerator(
             object_retriever=self.object_retriever, llm=self.llm
         )
-        self.ceiling_generator = CeilingObjectGenerator(object_retriever=self.object_retriever, llm=self.llm)
+        self.ceiling_generator = CeilingObjectGenerator(
+            object_retriever=self.object_retriever, llm=self.llm
+        )
         self.small_object_generator = SmallObjectGenerator(
             object_retriever=self.object_retriever, llm=self.llm
         )

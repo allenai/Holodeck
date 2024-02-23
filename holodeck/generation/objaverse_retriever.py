@@ -88,7 +88,9 @@ class ObjathorRetriever:
 
             query_feature_clip = F.normalize(query_feature_clip, p=2, dim=-1)
 
-        clip_similarities = 100 * torch.einsum('ij, lkj -> ilk', query_feature_clip, self.clip_features)
+        clip_similarities = 100 * torch.einsum(
+            "ij, lkj -> ilk", query_feature_clip, self.clip_features
+        )
         clip_similarities = torch.max(clip_similarities, dim=-1).values
 
         query_feature_sbert = self.sbert_model.encode(

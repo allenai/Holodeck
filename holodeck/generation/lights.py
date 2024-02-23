@@ -32,10 +32,10 @@ def generate_lights(scene):
         light_height = scene["wall_height"] - 0.2
         try:
             for object in scene["ceiling_objects"]:
-                if object["roomId"] == room_id: light_height = object["position"]["y"] - 0.2
+                if object["roomId"] == room_id:
+                    light_height = object["position"]["y"] - 0.2
         except:
             light_height = scene["wall_height"] - 0.2
-                    
 
         lights.append(
             Light(
@@ -53,7 +53,7 @@ def generate_lights(scene):
                     nearPlane=0.2,
                     resolution="FromQualitySettings",
                 ),
-                roomId=room_id
+                roomId=room_id,
             )
         )
 
