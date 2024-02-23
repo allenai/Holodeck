@@ -1,20 +1,25 @@
-import re
 import ast
 import copy
-import json
+import os
 import random
+import re
+
+import compress_json
 import numpy as np
 from colorama import Fore
-import modules.prompts as prompts
-from langchain import PromptTemplate
+from langchain import PromptTemplate, OpenAI
+
+import holodeck.generation.prompts as prompts
+from holodeck.constants import HOLODECK_BASE_DATA_DIR
+
 
 class WindowGenerator():
-    def __init__(self, llm):
+    def __init__(self, llm: OpenAI):
         self.json_template = {"assetId": None, "id": None, "room0": None, "room1": None,
                               "wall0": None, "wall1": None, "holePolygon": [],
                               "assetPosition": {}, "roomId": None}
         
-        self.window_data = json.load(open("data/windows/window-database.json", "r"))
+        self.window_data = compress_json.load(os.path.join(HOLODECK_BASE_DATA_DIR, "windows/window-database.json"))
         self.window_ids = list(self.window_data.keys())
         self.hole_offset = 0.05 # make the hole smaller than windows
         self.llm = llm

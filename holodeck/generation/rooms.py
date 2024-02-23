@@ -1,24 +1,27 @@
 import ast
 import copy
 import math
-import json
-import torch
-import pickle
-import numpy as np
-from PIL import Image
-from tqdm import tqdm
-from colorama import Fore
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import modules.prompts as prompts
-import matplotlib.colors as mcolors
+import os
 from difflib import SequenceMatcher
-from langchain import PromptTemplate
+
+import compress_json
+import compress_pickle
+import matplotlib.colors as mcolors
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+import torch
+from PIL import Image
+from colorama import Fore
+from langchain import PromptTemplate, OpenAI
 from shapely.geometry import LineString, Point, Polygon
+from tqdm import tqdm
+
+import holodeck.generation.prompts as prompts
+from holodeck.constants import HOLODECK_BASE_DATA_DIR
 
 
 class FloorPlanGenerator():
-    def __init__(self, clip_model, clip_process, clip_tokenizer, llm):
+    def __init__(self, clip_model, clip_process, clip_tokenizer, llm: OpenAI):
         self.json_template = {"ceilings": [], "children": [], "vertices": None,
                               "floorMaterial": {"name": None, "color": None}, 
                               "floorPolygon": [], "id": None, "roomType": None}
@@ -277,7 +280,7 @@ class FloorPlanGenerator():
 
 class MaterialSelector():
     def __init__(self, clip_model, clip_preprocess, clip_tokenizer):
-        materials = json.load(open("data/materials/material-database.json", "r"))
+        materials = compress_json.load(os.path.join(HOLODECK_BASE_DATA_DIR,"materials/material-database.json"))
         self.selected_materials = materials["Wall"] + materials["Wood"] + materials["Fabric"]
         self.colors = list(mcolors.CSS4_COLORS.keys())
 
@@ -290,27 +293,28 @@ class MaterialSelector():
 
     def load_features(self):        
         try:
-            self.material_feature_clip = pickle.load(open("data/materials/material_feature_clip.p", "rb"))
+            self.material_feature_clip = compress_pickle.load(os.path.join(HOLODECK_BASE_DATA_DIR, "materials/material_feature_clip.pkl"))
         except:
             print("Precompute image features for materials...")
             self.material_feature_clip = []
             for material in tqdm(self.selected_materials):
-                image = self.preprocess(Image.open(f"data/materials/images/{material}.png")).unsqueeze(0)
+                image = self.preprocess(Image.open(os.path.join(HOLODECK_BASE_DATA_DIR, f"materials/images/{material}.png"))).unsqueeze(0)
                 with torch.no_grad():
                     image_features = self.clip_model.encode_image(image)
                     image_features /= image_features.norm(dim=-1, keepdim=True)
                 self.material_feature_clip.append(image_features)
             self.material_feature_clip = torch.vstack(self.material_feature_clip)
-            pickle.dump(self.material_feature_clip, open("data/materials/material_feature_clip.p", "wb"))
+            compress_pickle.dump(self.material_feature_clip, os.path.join(HOLODECK_BASE_DATA_DIR, "materials/material_feature_clip.pkl"))
         
         try:
-            self.color_feature_clip = pickle.load(open("data/materials/color_feature_clip.p", "rb"))
+            self.color_feature_clip = compress_pickle.load(os.path.join(HOLODECK_BASE_DATA_DIR, "materials/color_feature_clip.pkl"))
         except:
             print("Precompute text features for colors...")
             with torch.no_grad():
                 self.color_feature_clip = self.clip_model.encode_text(self.clip_tokenizer(self.colors))
                 self.color_feature_clip /= self.color_feature_clip.norm(dim=-1, keepdim=True)
-            pickle.dump(self.color_feature_clip, open("data/materials/color_feature_clip.p", "wb"))
+
+            compress_pickle.dump(self.color_feature_clip, os.path.join(HOLODECK_BASE_DATA_DIR, "materials/color_feature_clip.pkl"))
 
 
     def match_material(self, queries, topk=5):

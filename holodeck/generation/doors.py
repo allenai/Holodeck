@@ -1,24 +1,28 @@
 import copy
-import json
-import torch
-import pickle
+import os
 import random
+
+import compress_json
+import compress_pickle
 import numpy as np
+import torch
 from PIL import Image
-from tqdm import tqdm
 from colorama import Fore
-import modules.prompts as prompts
-from langchain import PromptTemplate
+from langchain import PromptTemplate, OpenAI
+from tqdm import tqdm
+
+import holodeck.generation.prompts as prompts
+from holodeck.constants import HOLODECK_BASE_DATA_DIR
 
 
 class DoorGenerator():
-    def __init__(self, clip_model, clip_preprocess, clip_tokenizer, llm):
+    def __init__(self, clip_model, clip_preprocess, clip_tokenizer, llm: OpenAI):
         self.json_template = {"assetId": None, "id": None, "openable": False,
                               "openness": 0, "room0": None, "room1": None,
                               "wall0": None, "wall1": None, "holePolygon": [],
                               "assetPosition": {}}
         
-        self.door_data = json.load(open("data/doors/door-database.json", "r"))
+        self.door_data = compress_json.load(os.path.join(HOLODECK_BASE_DATA_DIR, "doors/door-database.json"))
         self.door_ids = list(self.door_data.keys())
         self.used_assets = []
 
@@ -34,18 +38,18 @@ class DoorGenerator():
 
     def load_features(self):
         try:
-            self.door_feature_clip = pickle.load(open("data/doors/door_feature_clip.p", "rb"))
+            self.door_feature_clip = compress_pickle.load(os.path.join(HOLODECK_BASE_DATA_DIR, "doors/door_feature_clip.pkl"))
         except:
             print("Precompute image features for doors...")
             self.door_feature_clip = []
             for door_id in tqdm(self.door_ids):
-                image = self.preprocess(Image.open(f"data/doors/images/{door_id}.png")).unsqueeze(0)
+                image = self.preprocess(Image.open(os.path.join(HOLODECK_BASE_DATA_DIR, f"doors/images/{door_id}.png"))).unsqueeze(0)
                 with torch.no_grad():
                     image_features = self.clip_model.encode_image(image)
                     image_features /= image_features.norm(dim=-1, keepdim=True)
                 self.door_feature_clip.append(image_features)
             self.door_feature_clip = torch.vstack(self.door_feature_clip)
-            pickle.dump(self.door_feature_clip, open("data/doors/door_feature_clip.p", "wb"))
+            compress_pickle.dump(self.door_feature_clip, os.path.join(HOLODECK_BASE_DATA_DIR, "doors/door_feature_clip.pkl"))
     
 
     def generate_doors(self, scene, additional_requirements_door):

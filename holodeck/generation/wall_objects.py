@@ -1,18 +1,22 @@
+import copy
+import multiprocessing
+import random
 import re
 import time
-import copy
-import random
-import numpy as np
-import multiprocessing
+
 import matplotlib.pyplot as plt
-import modules.prompts as prompts
-from langchain import PromptTemplate
-from shapely.ops import substring
+import numpy as np
+from langchain import PromptTemplate, OpenAI
 from shapely.geometry import Polygon, box, Point, LineString
+from shapely.ops import substring
+
+import holodeck.generation.prompts as prompts
+from holodeck.generation.objaverse_retriever import ObjathorRetriever
+from holodeck.generation.utils import get_bbox_dims
 
 
 class WallObjectGenerator():
-    def __init__(self, llm, object_retriever):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
         self.json_template = {"assetId": None, "id": None, "kinematic": True,
                               "position": {}, "rotation": {}, "material": None, "roomId": None}
         self.llm = llm
@@ -78,7 +82,7 @@ class WallObjectGenerator():
         constraints = self.parse_wall_object_constraints(constraint_plan, wall_object_names, floor_object_names)
         
         # get wall objects
-        wall_object2dimension = {object_name: self.database[object_id]['assetMetadata']['boundingBox'] for object_name, object_id in wall_object_name2id.items()}
+        wall_object2dimension = {object_name: get_bbox_dims(self.database[object_id]) for object_name, object_id in wall_object_name2id.items()}
         wall_objects_list = [(object_name, (wall_object2dimension[object_name]['x'] * 100, wall_object2dimension[object_name]['y'] * 100, wall_object2dimension[object_name]['z'] * 100)) for object_name in constraints]
         
         # update constraints with max height
@@ -235,7 +239,7 @@ class WallObjectGenerator():
     def order_objects_by_size(self, selected_wall_objects):
         ordered_wall_objects = []
         for object_name, asset_id in selected_wall_objects:
-            dimensions = self.database[asset_id]['assetMetadata']['boundingBox']
+            dimensions = get_bbox_dims(self.database[asset_id])
             size = dimensions["x"]
             ordered_wall_objects.append([object_name, asset_id, size])
         ordered_wall_objects.sort(key=lambda x: x[2], reverse=True)

@@ -1,24 +1,27 @@
+import copy
+import datetime
 import json
 import math
+import multiprocessing
+import random
 import re
 import time
-import copy
-import cvxpy as cp
-import random
-import datetime
-import numpy as np
-import multiprocessing
-from rtree import index
+
 import matplotlib.pyplot as plt
-import modules.prompts as prompts
-from langchain import PromptTemplate
+import numpy as np
+from langchain import PromptTemplate, OpenAI
+from rtree import index
 from scipy.interpolate import interp1d
 from shapely.geometry import Polygon, Point, box, LineString
-from modules.milp_utils import *
+
+import holodeck.generation.prompts as prompts
+from holodeck.generation.milp_utils import *
+from holodeck.generation.objaverse_retriever import ObjathorRetriever
+from holodeck.generation.utils import get_bbox_dims
 
 
 class FloorObjectGenerator():
-    def __init__(self, llm, object_retriever):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
         self.json_template = {"assetId": None, "id": None, "kinematic": True,
                               "position": {}, "rotation": {}, "material": None, "roomId": None}
         self.llm = llm
@@ -94,7 +97,7 @@ class FloorObjectGenerator():
             constraints = self.parse_constraints(constraint_plan, object_names)
 
             # get objects list
-            object2dimension = {object_name: self.database[object_id]['assetMetadata']['boundingBox']
+            object2dimension = {object_name: get_bbox_dims(self.database[object_id])
                                 for object_name, object_id in object_name2id.items()}
 
             objects_list = [(object_name, (object2dimension[object_name]['x'] * 100 + self.size_buffer, object2dimension[object_name]['z'] * 100 + self.size_buffer)) for object_name in constraints]
@@ -112,7 +115,7 @@ class FloorObjectGenerator():
             object_information = ""
             for object_name in object_names:
                 object_id = object_name2id[object_name]
-                dimension = self.database[object_name2id[object_name]]['assetMetadata']['boundingBox']
+                dimension = get_bbox_dims(self.database[object_name2id[object_name]])
                 size_x = int(dimension["x"] * 100)
                 size_z = int(dimension["z"] * 100)
                 object_information += f"{object_name}: {size_x} cm x {size_z} cm\n"
@@ -141,7 +144,7 @@ class FloorObjectGenerator():
                         all_is_placed = False
                         break
 
-                    dimension = self.database[object_name2id[object_name]]['assetMetadata']['boundingBox']
+                    dimension = get_bbox_dims(self.database[object_name2id[object_name]])
                     placement = self.json_template.copy()
                     placement["id"] = f"{object_name} ({room_id})"
                     placement["object_name"] = object_name
@@ -205,7 +208,7 @@ class FloorObjectGenerator():
         placements = []
         for object_name, solution in solutions.items():
             if "door" in object_name or "window" in object_name or "open" in object_name: continue
-            dimension = self.database[object_name2id[object_name]]['assetMetadata']['boundingBox']
+            dimension = get_bbox_dims(self.database[object_name2id[object_name]])
             placement = self.json_template.copy()
             placement["assetId"] = object_name2id[object_name]
             placement["id"] = f"{object_name} ({room_id})"
@@ -303,7 +306,7 @@ class FloorObjectGenerator():
     def order_objects_by_size(self, selected_floor_objects):
         ordered_floor_objects = []
         for object_name, asset_id in selected_floor_objects:
-            dimensions = self.database[asset_id]['assetMetadata']['boundingBox']
+            dimensions = get_bbox_dims(self.database[asset_id])
             size = dimensions["x"] * dimensions["z"]
             ordered_floor_objects.append([object_name, asset_id, size])
         ordered_floor_objects.sort(key=lambda x: x[2], reverse=True)

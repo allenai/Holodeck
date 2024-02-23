@@ -1,14 +1,16 @@
 import copy
 import random
+
 import numpy as np
 from colorama import Fore
-import modules.prompts as prompts
-from langchain import PromptTemplate
+from langchain import PromptTemplate, OpenAI
 from shapely.geometry import LineString, Polygon, Point
+
+import holodeck.generation.prompts as prompts
 
 
 class WallGenerator():
-    def __init__(self, llm):
+    def __init__(self, llm: OpenAI):
         self.json_template = {"id": None, "roomId": None,
                               "material": {"name": None, "color": None},
                               "polygon": []}

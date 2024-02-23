@@ -1,4 +1,5 @@
 import random
+
 from procthor.utils.types import RGB, Vector3
 
 skyboxes = ["Sky1", "Sky2", "SkyAlbany", "SkyAlbanyHill", "SkyDalyCity", "SkyEmeryville", "SkyGarden", "SkyTropical",

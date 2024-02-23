@@ -1,20 +1,25 @@
 import copy
-import torch
-import random
 import multiprocessing
+import random
+
+import torch
 import torch.nn.functional as F
 from ai2thor.controller import Controller
+from ai2thor.hooks.procedural_asset_hook import ProceduralAssetHookRunner
+from langchain import OpenAI
 from procthor.constants import FLOOR_Y
 from procthor.utils.types import Vector3
-from ai2thor.hooks.procedural_asset_hook import ProceduralAssetHookRunner
+
+from holodeck.constants import THOR_COMMIT_ID
+from holodeck.generation.objaverse_retriever import ObjathorRetriever
+from holodeck.generation.utils import get_bbox_dims, get_annotations, get_secondary_properties
 
 
 class SmallObjectGenerator():
-    def __init__(self, llm, object_retriever, objaverse_version):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
         self.llm = llm
         self.object_retriever = object_retriever
         self.database = object_retriever.database
-        self.objaverse_version = objaverse_version
 
         # set kinematic to false for small objects
         self.json_template = {"assetId": None, "id": None, "kinematic": False,
@@ -50,7 +55,7 @@ class SmallObjectGenerator():
                     placement["assetId"] = asset_id
                     placement["id"] = f"{object_name}|{receptacle}"
                     placement["position"] = obj["position"]
-                    asset_height = self.database[asset_id]['assetMetadata']['boundingBox']["y"]
+                    asset_height = get_bbox_dims(self.database[asset_id])["y"]
 
                     if obj["position"]["y"] + asset_height > scene["wall_height"]: continue # if the object is too high, skip it
 
@@ -66,8 +71,8 @@ class SmallObjectGenerator():
 
                     if not small and not thin: placement["kinematic"] = True # set kinematic to true for non-small objects
 
-                    if "breakable" in self.database[asset_id]["objectMetadata"].keys():
-                        if self.database[asset_id]["objectMetadata"]["breakable"] == True: placement["kinematic"] = True
+                    if "CanBreak" in get_secondary_properties(self.database[asset_id]):
+                        placement["kinematic"] = True
 
                     placements.append(placement)
                     
@@ -147,7 +152,7 @@ class SmallObjectGenerator():
         receptacle, small_objects, receptacle2asset_id = args
 
         results = []
-        receptacle_dimensions = self.database[receptacle2asset_id[receptacle]]['assetMetadata']['boundingBox']
+        receptacle_dimensions = get_bbox_dims(self.database[receptacle2asset_id[receptacle]])
         receptacle_size = [receptacle_dimensions["x"], receptacle_dimensions["z"]]
         receptacle_area = receptacle_size[0] * receptacle_size[1]
         capacity = 0
@@ -160,12 +165,12 @@ class SmallObjectGenerator():
             # Select the object
             candidates = self.object_retriever.retrieve([f"a 3D model of {object_name}"], self.clip_threshold)
             candidates = [candidate for candidate in candidates
-                            if self.database[candidate[0]]["annotations"]["onObject"] == True] # Only select objects that can be placed on other objects
+                            if get_annotations(self.database[candidate[0]])["onObject"] == True] # Only select objects that can be placed on other objects
             
             valid_candidates = [] # Only select objects with high confidence
 
             for candidate in candidates:
-                candidate_dimensions = self.database[candidate[0]]['assetMetadata']['boundingBox']
+                candidate_dimensions = get_bbox_dims(self.database[candidate[0]])
                 candidate_size = [candidate_dimensions["x"], candidate_dimensions["z"]]
                 sorted(candidate_size)
                 if candidate_size[0] < receptacle_size[0] * 0.9 and candidate_size[1] < receptacle_size[1] * 0.9: # if the object is smaller than the receptacle, threshold is 90%
@@ -194,7 +199,7 @@ class SmallObjectGenerator():
                     if len(valid_candidates) > 1: valid_candidates.remove(selected_candidate)
             
             for i in range(quantity):
-                small_object_dimensions = self.database[selected_asset_ids[i]]['assetMetadata']['boundingBox']
+                small_object_dimensions = get_bbox_dims(self.database[selected_asset_ids[i]])
                 small_object_sizes = [small_object_dimensions["x"], small_object_dimensions["y"], small_object_dimensions["z"]]
                 sorted(small_object_sizes)
                 # small_object_area = small_object_dimensions["x"] * small_object_dimensions["z"]
@@ -208,7 +213,7 @@ class SmallObjectGenerator():
         
         ordered_small_objects = []
         for object_name, asset_id in results:
-            dimensions = self.database[asset_id]['assetMetadata']['boundingBox']
+            dimensions = get_bbox_dims(self.database[asset_id])
             size = max(dimensions["x"], dimensions["z"])
             ordered_small_objects.append((object_name, asset_id, size))
         ordered_small_objects.sort(key=lambda x: x[2], reverse=True)
@@ -218,6 +223,7 @@ class SmallObjectGenerator():
 
     def start_controller(self, scene, objaverse_dir):
         controller = Controller(
+            commit_id=THOR_COMMIT_ID,
             agentMode="default",
             makeAgentsVisible=False,
             visibilityDistance=1.5,
@@ -275,7 +281,7 @@ class SmallObjectGenerator():
     
 
     def check_thin_asset(self, asset_id):
-        dimensions = self.database[asset_id]["assetMetadata"]["boundingBox"]
+        dimensions = get_bbox_dims(self.database[asset_id])
         twod_size = (dimensions["x"]*100, dimensions["z"]*100)
         threshold = 5 # 3cm is the threshold for thin objects # TODO: need a better way to determine thin threshold
 
@@ -294,7 +300,7 @@ class SmallObjectGenerator():
 
     def fix_placement_for_thin_assets(self, placement):
         asset_id = placement["assetId"]
-        dimensions = self.database[asset_id]["assetMetadata"]["boundingBox"]
+        dimensions = get_bbox_dims(self.database[asset_id])
         threshold = 0.03 # 0.03 meter is the threshold for thin objects
 
         orginal_rotation = placement["rotation"]
@@ -325,7 +331,7 @@ class SmallObjectGenerator():
     
 
     def check_small_asset(self, asset_id):
-        dimensions = self.database[asset_id]["assetMetadata"]["boundingBox"]
+        dimensions = get_bbox_dims(self.database[asset_id])
         size = (dimensions["x"]*100, dimensions["y"]*100, dimensions["z"]*100)
         threshold = 25 * 25 # 25cm * 25cm is the threshold for small objects
 
@@ -362,7 +368,7 @@ class SmallObjectGenerator():
                 remove_ids = []
                 colliding_ids = list(set([pair[0] for pair in colliding_pairs] + [pair[1] for pair in colliding_pairs]))
                 # order by size from small to large
-                colliding_ids = sorted(colliding_ids, key=lambda x: self.database[id2assetId[x]]["assetMetadata"]["boundingBox"]["x"] * self.database[id2assetId[x]]["assetMetadata"]["boundingBox"]["z"])
+                colliding_ids = sorted(colliding_ids, key=lambda x: get_bbox_dims(self.database[id2assetId[x]])["x"] * get_bbox_dims(self.database[id2assetId[x]])["z"])
                 for object_id in colliding_ids:
                     remove_ids.append(object_id)
                     colliding_pairs = [pair for pair in colliding_pairs if object_id not in pair]
@@ -375,7 +381,7 @@ class SmallObjectGenerator():
 
     def get_bounding_box(self, placement):
         asset_id = placement["assetId"]
-        dimensions = self.database[asset_id]["assetMetadata"]["boundingBox"]
+        dimensions = get_bbox_dims(self.database[asset_id])
         size = (dimensions["x"]*100, dimensions["y"]*100, dimensions["z"]*100)
         position = placement["position"]
         box = {"min": [position["x"]*100 - size[0]/2, position["y"]*100 - size[1]/2, position["z"]*100 - size[2]/2],

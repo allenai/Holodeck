@@ -1,5 +1,6 @@
-from shapely import Polygon
 from procthor.utils.types import RGB, Light, LightShadow, Vector3
+from shapely import Polygon
+
 
 def generate_lights(scene):
     lights = [

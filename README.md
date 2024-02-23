@@ -8,7 +8,7 @@
 </h5>
 
 <h4 align="center">
-  <a href="https://arxiv.org/abs/2312.09067">Paper</i></a> | <a href="https://yueyang1996.github.io/holodeck/">Project Page</i></a>
+  <a href="https://arxiv.org/abs/2312.09067"><i>Paper</i></a> | <a href="https://yueyang1996.github.io/holodeck/"><i>Project Page</i></a>
 </h4>
 
 ## Requirements
@@ -19,25 +19,26 @@ Holodeck is based on [AI2-THOR](https://ai2thor.allenai.org/ithor/documentation/
 ## Installation
 After cloning the repo, you can install the required dependencies using the following commands:
 ```
-conda create --name holodeck python=3.9.16
+conda create --name holodeck python=3.10
 conda activate holodeck
 pip install -r requirements.txt
-pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+6f165fdaf3cf2d03728f931f39261d14a67414d0
+pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+e24aa88d86d460f1f5352e28b8e754c3f5966865
 ```
 
 ## Data
-Download the data from [here](https://drive.google.com/file/d/1MQbFbNfTz94x8Pxfkgbohz4l46O5e3G1/view?usp=sharing) and extract it to the `data/` folder, or use the following command:
+Download the data by running the following commands:
+```bash
+python -m objathor.dataset.download_holodeck_metadata --version 2023_09_23
+python -m objathor.dataset.download_assets --version 2023_09_23
+python -m objathor.dataset.download_annotations --version 2023_09_23
+python -m objathor.dataset.download_features --version 2023_09_23
 ```
-FILE_ID=1MQbFbNfTz94x8Pxfkgbohz4l46O5e3G1
-CONFIRM=$(curl -sc /tmp/gcookie "https://drive.google.com/uc?export=download&id=${FILE_ID}" | grep -o 'confirm=[^&]*' | sed 's/confirm=//')
-wget --load-cookies /tmp/gcookie "https://drive.google.com/uc?export=download&confirm=${CONFIRM}&id=${FILE_ID}" -O data.zip && rm -rf /tmp/gcookie
-unzip data.zip
-```
+by default these will save to `~/.objathor-assets/...`, you can change this director by specifying the `--path` argument. 
 
 ## Usage
 You can use the following command to generate a new environment.
 ```
-python main.py --query "a living room" --openai_api_key <OPENAI_API_KEY>
+python holodeck/main.py --query "a living room" --openai_api_key <OPENAI_API_KEY>
 ```
 To be noticed, our system uses `gpt-4-1106-preview`, so please ensure you have access to it.
 

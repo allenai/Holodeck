@@ -1,12 +1,17 @@
 import copy
-import json
+import os
+from argparse import ArgumentParser
+from typing import Dict, Any
+
+import compress_json
 import numpy as np
 from PIL import Image
-from tqdm import tqdm
-from argparse import ArgumentParser
 from ai2thor.controller import Controller
 from ai2thor.hooks.procedural_asset_hook import ProceduralAssetHookRunner
 from moviepy.editor import TextClip, CompositeVideoClip, concatenate_videoclips, ImageSequenceClip
+from tqdm import tqdm
+
+from holodeck.constants import HOLODECK_BASE_DATA_DIR, THOR_COMMIT_ID
 
 
 def all_edges_white(img):
@@ -32,6 +37,7 @@ def all_edges_white(img):
 
 def get_top_down_frame(scene, objaverse_asset_dir, width=1024, height=1024):
     controller = Controller(
+        commit_id=THOR_COMMIT_ID,
         agentMode="default",
         makeAgentsVisible=False,
         visibilityDistance=1.5,
@@ -87,6 +93,7 @@ def get_top_down_frame(scene, objaverse_asset_dir, width=1024, height=1024):
 
 def get_top_down_frame_ithor(scene, objaverse_asset_dir, width=1024, height=1024):
     controller = Controller(
+        commit_id=THOR_COMMIT_ID,
         agentMode="default",
         makeAgentsVisible=False,
         visibilityDistance=1.5,
@@ -121,15 +128,15 @@ def get_top_down_frame_ithor(scene, objaverse_asset_dir, width=1024, height=1024
 
 
 def main(save_path):
-    scene = json.load(open(save_path + f"scene.json", "r"))
+    scene = compress_json.load(save_path + f"scene.json", "r")
     image = get_top_down_frame(scene)
     image.save(f"test1.png")
-    with open(save_path + f"scene.json", "w") as f:
-        json.dump(scene, f, indent=4)
+
+    compress_json.dump(scene, save_path + f"scene.json", json_kwargs=dict(indent=4))
 
 
 def visualize_asset(asset_id, version):
-    empty_house = json.load(open("empty_house.json", "r"))
+    empty_house = compress_json.load("empty_house.json")
     empty_house["objects"] = [{
             "assetId": asset_id,
             "id": "test_asset",
@@ -152,6 +159,7 @@ def visualize_asset(asset_id, version):
 
 def get_room_images(scene, objaverse_asset_dir, width=1024, height=1024):
     controller = Controller(
+        commit_id=THOR_COMMIT_ID,
         agentMode="default",
         makeAgentsVisible=False,
         visibilityDistance=1.5,
@@ -209,6 +217,7 @@ def get_room_images(scene, objaverse_asset_dir, width=1024, height=1024):
 
 def ithor_video(scene, objaverse_asset_dir, width, height, scene_type):
     controller = Controller(
+        commit_id=THOR_COMMIT_ID,
         agentMode="default",
         makeAgentsVisible=False,
         visibilityDistance=2,
@@ -281,6 +290,7 @@ def room_video(scene, objaverse_asset_dir, width, height):
 
     """Saves a top-down video of the house."""
     controller = Controller(
+        commit_id=THOR_COMMIT_ID,
         agentMode="default",
         makeAgentsVisible=False,
         visibilityDistance=2,
@@ -356,14 +366,54 @@ def room_video(scene, objaverse_asset_dir, width, height):
     return final_video
 
 
+def get_asset_metadata(obj_data: Dict[str, Any]):
+    if "assetMetadata" in obj_data:
+        return obj_data["assetMetadata"]
+    elif "thor_metadata" in obj_data:
+        return obj_data["thor_metadata"]["assetMetadata"]
+    else:
+        raise ValueError("Can not find assetMetadata in obj_data")
+
+
+def get_annotations(obj_data: Dict[str, Any]):
+    if "annotations" in obj_data:
+        return obj_data["annotations"]
+    else:
+        # The assert here is just double-checking that a field that should exist does.
+        assert "onFloor" in obj_data, f"Can not find annotations in obj_data {obj_data}"
+
+        return obj_data
+
+def get_bbox_dims(obj_data: Dict[str, Any]):
+    am = get_asset_metadata(obj_data)
+
+    bbox_info = am["boundingBox"]
+
+    if "x" in bbox_info:
+        return bbox_info
+
+    if "size" in bbox_info:
+        return bbox_info["size"]
+
+    mins = bbox_info["min"]
+    maxs = bbox_info["max"]
+
+    return {
+        k: maxs[k] - mins[k] for k in ["x", "y", "z"]
+    }
+
+def get_secondary_properties(obj_data: Dict[str, Any]):
+    am = get_asset_metadata(obj_data)
+    return am["secondaryProperties"]
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--mode", help = "Mode to run (top_down_frame, top_down_video, room_image).", default = "top_down_frame")
     parser.add_argument("--objaverse_asset_dir", help = "Directory to load assets from.", default = "./objaverse/processed_2023_09_23_combine_scale")
-    parser.add_argument("--scene", help = "Scene to load.", default = "data/scenes/a_living_room/a_living_room.json")
+    parser.add_argument("--scene", help = "Scene to load.", default = os.path.join(HOLODECK_BASE_DATA_DIR, "scenes/a_living_room/a_living_room.json"))
 
     args = parser.parse_args()
-    scene = json.load(open(args.scene, "r"))
+    scene = compress_json.load(args.scene)
 
     if "query" not in scene: scene["query"] = args.scene.split("/")[-1].split(".")[0]
 
