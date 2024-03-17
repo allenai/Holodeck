@@ -31,7 +31,6 @@ def generate_single_scene(args):
         use_milp=ast.literal_eval(args.use_milp),
         random_selection=ast.literal_eval(args.random_selection)
     )
-    print(f"Could not generate scene from {args.query}.")
 
 
 def generate_multi_scenes(args):

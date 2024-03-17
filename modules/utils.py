@@ -358,8 +358,8 @@ def room_video(scene, objaverse_asset_dir, width, height):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--mode", help = "Mode to run (top_down_frame, top_down_video, room_image).", default = "top_down_frame")
-    parser.add_argument("--objaverse_asset_dir", help = "Directory to load assets from.", default = "./objaverse/processed_2023_09_23_combine_scale")
+    parser.add_argument("--mode", help = "Mode to run (top_down_frame, room_video, room_image).", default = "top_down_frame")
+    parser.add_argument("--objaverse_asset_dir", help = "Directory to load assets from.", default = "./data/objaverse_holodeck/09_23_combine_scale/processed_2023_09_23_combine_scale")
     parser.add_argument("--scene", help = "Scene to load.", default = "data/scenes/a_living_room/a_living_room.json")
 
     args = parser.parse_args()
