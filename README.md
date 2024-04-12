@@ -14,6 +14,8 @@
 ## Requirements
 Holodeck is based on [AI2-THOR](https://ai2thor.allenai.org/ithor/documentation/#requirements), and we currently support macOS 10.9+ or Ubuntu 14.04+.
 
+**New Feature**: To add ANY new assets to AI2-THOR, please check the [objathor repo](https://github.com/allenai/objathor)!
+
 **Note:** To yield better layouts, use `DFS` as the solver. If you pull the repo before `12/28/2023`, you must set the [argument](https://github.com/allenai/Holodeck/blob/386b0a868def29175436dc3b1ed85b6309eb3cad/main.py#L78) `--use_milp` to `False` to use `DFS`.
 
 ## Installation
