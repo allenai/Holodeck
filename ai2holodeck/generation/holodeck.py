@@ -8,7 +8,7 @@ from langchain.llms import OpenAI
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
-from holodeck.constants import (
+from ai2holodeck.constants import (
     HOLODECK_BASE_DATA_DIR,
     OBJATHOR_VERSIONED_DIR,
     OBJATHOR_ASSETS_DIR,
@@ -18,20 +18,20 @@ from holodeck.constants import (
     HOLODECK_THOR_ANNOTATIONS_PATH,
     LLM_MODEL_NAME,
 )
-from holodeck.generation.ceiling_objects import CeilingObjectGenerator
-from holodeck.generation.doors import DoorGenerator
-from holodeck.generation.floor_objects import FloorObjectGenerator
-from holodeck.generation.layers import map_asset2layer
-from holodeck.generation.lights import generate_lights
-from holodeck.generation.objaverse_retriever import ObjathorRetriever
-from holodeck.generation.object_selector import ObjectSelector
-from holodeck.generation.rooms import FloorPlanGenerator
-from holodeck.generation.skybox import getSkybox
-from holodeck.generation.small_objects import SmallObjectGenerator
-from holodeck.generation.utils import get_top_down_frame, room_video
-from holodeck.generation.wall_objects import WallObjectGenerator
-from holodeck.generation.walls import WallGenerator
-from holodeck.generation.windows import WindowGenerator
+from ai2holodeck.generation.ceiling_objects import CeilingObjectGenerator
+from ai2holodeck.generation.doors import DoorGenerator
+from ai2holodeck.generation.floor_objects import FloorObjectGenerator
+from ai2holodeck.generation.layers import map_asset2layer
+from ai2holodeck.generation.lights import generate_lights
+from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
+from ai2holodeck.generation.object_selector import ObjectSelector
+from ai2holodeck.generation.rooms import FloorPlanGenerator
+from ai2holodeck.generation.skybox import getSkybox
+from ai2holodeck.generation.small_objects import SmallObjectGenerator
+from ai2holodeck.generation.utils import get_top_down_frame, room_video
+from ai2holodeck.generation.wall_objects import WallObjectGenerator
+from ai2holodeck.generation.walls import WallGenerator
+from ai2holodeck.generation.windows import WindowGenerator
 
 
 def confirm_paths_exist():

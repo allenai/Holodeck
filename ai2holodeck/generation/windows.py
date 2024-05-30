@@ -9,8 +9,8 @@ import numpy as np
 from colorama import Fore
 from langchain import PromptTemplate, OpenAI
 
-import holodeck.generation.prompts as prompts
-from holodeck.constants import HOLODECK_BASE_DATA_DIR
+import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.constants import HOLODECK_BASE_DATA_DIR
 
 
 class WindowGenerator:

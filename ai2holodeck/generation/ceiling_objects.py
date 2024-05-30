@@ -7,9 +7,9 @@ from colorama import Fore
 from langchain import PromptTemplate, OpenAI
 from shapely.geometry import Polygon
 
-import holodeck.generation.prompts as prompts
-from holodeck.generation.objaverse_retriever import ObjathorRetriever
-from holodeck.generation.utils import get_bbox_dims, get_annotations
+import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
+from ai2holodeck.generation.utils import get_bbox_dims, get_annotations
 
 
 class CeilingObjectGenerator:

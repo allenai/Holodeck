@@ -6,7 +6,7 @@ from colorama import Fore
 from langchain import PromptTemplate, OpenAI
 from shapely.geometry import LineString, Polygon, Point
 
-import holodeck.generation.prompts as prompts
+import ai2holodeck.generation.prompts as prompts
 
 
 class WallGenerator:

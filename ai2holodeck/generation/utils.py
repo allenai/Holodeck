@@ -16,7 +16,7 @@ from moviepy.editor import (
 )
 from tqdm import tqdm
 
-from holodeck.constants import HOLODECK_BASE_DATA_DIR, THOR_COMMIT_ID
+from ai2holodeck.constants import HOLODECK_BASE_DATA_DIR, THOR_COMMIT_ID
 
 
 def all_edges_white(img):

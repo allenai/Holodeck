@@ -10,9 +10,9 @@ from langchain import PromptTemplate, OpenAI
 from shapely.geometry import Polygon, box, Point, LineString
 from shapely.ops import substring
 
-import holodeck.generation.prompts as prompts
-from holodeck.generation.objaverse_retriever import ObjathorRetriever
-from holodeck.generation.utils import get_bbox_dims
+import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
+from ai2holodeck.generation.utils import get_bbox_dims
 
 
 class WallObjectGenerator:

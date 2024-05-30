@@ -13,11 +13,11 @@ from colorama import Fore
 from langchain import PromptTemplate, OpenAI
 from shapely import Polygon
 
-import holodeck.generation.prompts as prompts
-from holodeck.generation.floor_objects import DFS_Solver_Floor
-from holodeck.generation.objaverse_retriever import ObjathorRetriever
-from holodeck.generation.utils import get_bbox_dims, get_annotations
-from holodeck.generation.wall_objects import DFS_Solver_Wall
+import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.generation.floor_objects import DFS_Solver_Floor
+from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
+from ai2holodeck.generation.utils import get_bbox_dims, get_annotations
+from ai2holodeck.generation.wall_objects import DFS_Solver_Wall
 
 EXPECTED_OBJECT_ATTRIBUTES = [
     "description",

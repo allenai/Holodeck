@@ -16,8 +16,8 @@ from langchain import PromptTemplate, OpenAI
 from shapely.geometry import LineString, Point, Polygon
 from tqdm import tqdm
 
-import holodeck.generation.prompts as prompts
-from holodeck.constants import HOLODECK_BASE_DATA_DIR, DEBUGGING
+import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.constants import HOLODECK_BASE_DATA_DIR, DEBUGGING
 
 
 class FloorPlanGenerator:

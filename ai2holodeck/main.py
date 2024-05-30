@@ -6,8 +6,8 @@ from argparse import ArgumentParser
 import compress_json
 from tqdm import tqdm
 
-from holodeck.constants import HOLODECK_BASE_DATA_DIR, OBJATHOR_ASSETS_DIR
-from holodeck.generation.holodeck import Holodeck
+from ai2holodeck.constants import HOLODECK_BASE_DATA_DIR, OBJATHOR_ASSETS_DIR
+from ai2holodeck.generation.holodeck import Holodeck
 
 
 def str2bool(v: str):

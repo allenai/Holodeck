@@ -10,9 +10,9 @@ from langchain import OpenAI
 from procthor.constants import FLOOR_Y
 from procthor.utils.types import Vector3
 
-from holodeck.constants import THOR_COMMIT_ID
-from holodeck.generation.objaverse_retriever import ObjathorRetriever
-from holodeck.generation.utils import (
+from ai2holodeck.constants import THOR_COMMIT_ID
+from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
+from ai2holodeck.generation.utils import (
     get_bbox_dims,
     get_annotations,
     get_secondary_properties,

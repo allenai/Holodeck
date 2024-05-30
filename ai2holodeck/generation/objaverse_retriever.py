@@ -6,13 +6,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from holodeck.constants import (
+from ai2holodeck.constants import (
     OBJATHOR_ANNOTATIONS_PATH,
     HOLODECK_THOR_ANNOTATIONS_PATH,
     OBJATHOR_FEATURES_DIR,
     HOLODECK_THOR_FEATURES_DIR,
 )
-from holodeck.generation.utils import get_bbox_dims
+from ai2holodeck.generation.utils import get_bbox_dims
 
 
 class ObjathorRetriever:

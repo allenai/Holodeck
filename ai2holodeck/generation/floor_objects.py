@@ -14,10 +14,10 @@ from rtree import index
 from scipy.interpolate import interp1d
 from shapely.geometry import Polygon, Point, box, LineString
 
-import holodeck.generation.prompts as prompts
-from holodeck.generation.milp_utils import *
-from holodeck.generation.objaverse_retriever import ObjathorRetriever
-from holodeck.generation.utils import get_bbox_dims
+import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.generation.milp_utils import *
+from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
+from ai2holodeck.generation.utils import get_bbox_dims
 
 
 class FloorObjectGenerator:
