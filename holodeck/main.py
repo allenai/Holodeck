@@ -22,19 +22,35 @@ def str2bool(v: str):
 
 def generate_single_scene(args):
     folder_name = args.query.replace(" ", "_").replace("'", "")
-    try:
-        if args.original_scene is not None:
+
+    scene = None
+    if args.original_scene is not None:
+        print(f"Loading original scene from {args.original_scene}.")
+        try:
             scene = compress_json.load(args.original_scene)
-            print(f"Loading exist scene from {args.original_scene}.")
-        else:
-            path = os.path.join(
-                HOLODECK_BASE_DATA_DIR, f"scenes/{folder_name}/{folder_name}.json"
+        except:
+            print(
+                f"[ERROR] Could not load original scene from given path {args.original_scene}."
             )
-            print(f"Loading exist scene from {path}.")
-            scene = compress_json.load(path)
-    except:
-        scene = args.model.get_empty_scene()
+            raise
+    else:
+        path = os.path.join(
+            HOLODECK_BASE_DATA_DIR, f"scenes/{folder_name}/{folder_name}.json"
+        )
+        if os.path.exists(path):
+            print(f"Loading existing scene from {path}.")
+            try:
+                scene = compress_json.load(path)
+            except:
+                print(
+                    f"[ERROR] The path {path} exists but could not be loaded. Please delete"
+                    f" this file and try again."
+                )
+                raise
+
+    if scene is None:
         print("Generating from an empty scene.")
+        scene = args.model.get_empty_scene()
 
     try:
         _, save_dir = args.model.generate_scene(

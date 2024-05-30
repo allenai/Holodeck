@@ -16,6 +16,7 @@ from holodeck.constants import (
     OBJATHOR_ANNOTATIONS_PATH,
     HOLODECK_THOR_FEATURES_DIR,
     HOLODECK_THOR_ANNOTATIONS_PATH,
+    LLM_MODEL_NAME,
 )
 from holodeck.generation.ceiling_objects import CeilingObjectGenerator
 from holodeck.generation.doors import DoorGenerator
@@ -66,12 +67,7 @@ class Holodeck:
 
         # initialize llm
         self.llm = OpenAI(
-            model_name="gpt-4-1106-preview",
-            max_tokens=2048,
-            openai_api_key=openai_api_key,
-        )
-        self.llm_fast = OpenAI(
-            model_name="gpt-3.5-turbo",
+            model_name=LLM_MODEL_NAME,
             max_tokens=2048,
             openai_api_key=openai_api_key,
         )

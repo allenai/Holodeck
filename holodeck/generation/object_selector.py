@@ -1,9 +1,11 @@
+import ast
 import copy
 import json
 import multiprocessing
 import random
 import re
-from typing import Dict
+import traceback
+from typing import Dict, List
 
 import torch
 import torch.nn.functional as F
@@ -16,6 +18,15 @@ from holodeck.generation.floor_objects import DFS_Solver_Floor
 from holodeck.generation.objaverse_retriever import ObjathorRetriever
 from holodeck.generation.utils import get_bbox_dims, get_annotations
 from holodeck.generation.wall_objects import DFS_Solver_Wall
+
+EXPECTED_OBJECT_ATTRIBUTES = [
+    "description",
+    "location",
+    "size",
+    "quantity",
+    "variance_type",
+    "objects_on_top",
+]
 
 
 class ObjectSelector:
@@ -151,7 +162,6 @@ class ObjectSelector:
             .replace("ROOM_SIZE", room_size_str)
             .replace("REQUIREMENTS", additional_requirements)
         )
-        # print(f"\nUser: {prompt_1}\n")
 
         output_1 = self.llm(prompt_1).lower()
         plan_1 = self.extract_json(output_1)
@@ -174,13 +184,17 @@ class ObjectSelector:
             room2vertices[room_type],
         )
 
-        if floor_capacity[1] / floor_capacity[0] >= 0.8:
+        required_floor_capacity_percentage = 0.8
+        if floor_capacity[1] / floor_capacity[0] >= required_floor_capacity_percentage:
             result["floor"] = floor_objects
             result["wall"] = wall_objects
             result["plan"] = plan_1
         else:
             print(
-                f"{Fore.RED}AI: The floor capacity of {room_type} is {floor_capacity[1]:.2g}m^2, which is less than 70% of the total floor capacity {floor_capacity[0]:.2g}m^2.{Fore.RESET}"
+                f"{Fore.RED}AI: The floor capacity of {room_type} is {floor_capacity[1]:.2g}m^2,"
+                f" which is less than {100*required_floor_capacity_percentage:.0f}% of the total floor capacity"
+                f" {floor_capacity[0]:.2g}m^2."
+                f"{Fore.RESET}"
             )
             prompt_2 = self.object_selection_template_2.format(
                 object_selection_prompt_new_1=prompt_1,
@@ -189,6 +203,12 @@ class ObjectSelector:
             )
             output_2 = self.llm(prompt_2).lower()
             plan_2 = self.extract_json(output_2)
+
+            if plan_2 is None:
+                print(
+                    f"{Fore.RED}AI: Replanning failed, will use original plan.{Fore.RESET}"
+                )
+                plan_2 = plan_1
 
             new_plan = copy.deepcopy(plan_1)
             for object in plan_2:
@@ -202,40 +222,76 @@ class ObjectSelector:
                 room2wall_capacity[room_type],
                 room2vertices[room_type],
             )
+
             result["floor"] = floor_objects
             result["wall"] = wall_objects
             result["plan"] = new_plan
 
         return room_type, result
 
+    def _recursively_normalize_attribute_keys(self, obj):
+        if isinstance(obj, Dict):
+            return {
+                key.strip()
+                .lower()
+                .replace(" ", "_"): self._recursively_normalize_attribute_keys(value)
+                for key, value in obj.items()
+            }
+        elif isinstance(obj, List):
+            return [self._recursively_normalize_attribute_keys(value) for value in obj]
+        elif isinstance(obj, (str, int, float, bool)):
+            return obj
+        else:
+            print(
+                f"Unexpected type {type(obj)} in {obj} while normalizing attribute keys."
+                f" Returning the object as is."
+            )
+            return obj
+
     def extract_json(self, input_string):
         # Using regex to identify the JSON structure in the string
         json_match = re.search(r"{.*}", input_string, re.DOTALL)
         if json_match:
             extracted_json = json_match.group(0)
+
+            # Convert the extracted JSON string into a Python dictionary
+            json_dict = None
             try:
-                # Convert the extracted JSON string into a Python dictionary
                 json_dict = json.loads(extracted_json)
-                json_dict = self.check_dict(json_dict)
-                return json_dict
-            except json.JSONDecodeError:
-                print(input_string)
-                print("Error while decoding the JSON.")
+            except:
+                try:
+                    json_dict = ast.literal_eval(extracted_json)
+                except:
+                    pass
+
+            if json_dict is None:
+                print(
+                    f"{Fore.RED}[ERROR] while parsing the JSON for:\n{input_string}{Fore.RESET}",
+                    flush=True,
+                )
                 return None
+
+            json_dict = self._recursively_normalize_attribute_keys(json_dict)
+            try:
+                json_dict = self.check_dict(json_dict)
+            except Exception as e:
+                print(
+                    f"{Fore.RED}[ERROR] Dictionary check failed for:"
+                    f"\n{json_dict}"
+                    f"\nFailure reason:{traceback.format_exception_only(e)}"
+                    f"{Fore.RESET}",
+                    flush=True,
+                )
+
+            return json_dict
+
         else:
-            print("No valid JSON found.")
+            print(f"No valid JSON found in:\n{input_string}", flush=True)
             return None
 
     def check_dict(self, dict):
         valid = True
-        attributes = [
-            "description",
-            "location",
-            "size",
-            "quantity",
-            "variance_type",
-            "objects_on_top",
-        ]
+
         for key, value in dict.items():
             if not isinstance(key, str):
                 valid = False
@@ -245,7 +301,7 @@ class ObjectSelector:
                 valid = False
                 break
 
-            for attribute in attributes:
+            for attribute in EXPECTED_OBJECT_ATTRIBUTES:
                 if attribute not in value:
                     valid = False
                     break
@@ -254,7 +310,7 @@ class ObjectSelector:
                 valid = False
                 break
 
-            if value["location"] not in ["floor", "wall"]:
+            if value.get("location") not in ["floor", "wall"]:
                 dict[key]["location"] = "floor"
 
             if (
@@ -267,12 +323,12 @@ class ObjectSelector:
             if not isinstance(value["quantity"], int):
                 dict[key]["quantity"] = 1
 
-            if not isinstance(value["variance_type"], str) or value[
+            if not isinstance(value.get("variance_type"), str) or value[
                 "variance_type"
             ] not in ["same", "varied"]:
                 dict[key]["variance_type"] = "same"
 
-            if not isinstance(value["objects_on_top"], list):
+            if not isinstance(value.get("objects_on_top"), list):
                 dict[key]["objects_on_top"] = []
 
             for i, child in enumerate(value["objects_on_top"]):
@@ -280,7 +336,7 @@ class ObjectSelector:
                     valid = False
                     break
 
-                for attribute in ["object_name", "quantity", "variance_type"]:
+                for attribute in ["object_name", "quantity"]:
                     if attribute not in child:
                         valid = False
                         break
@@ -292,7 +348,7 @@ class ObjectSelector:
                 if not isinstance(child["quantity"], int):
                     dict[key]["objects_on_top"][i]["quantity"] = 1
 
-                if not isinstance(child["variance_type"], str) or child[
+                if not isinstance(child.get("variance_type"), str) or child[
                     "variance_type"
                 ] not in ["same", "varied"]:
                     dict[key]["objects_on_top"][i]["variance_type"] = "same"
@@ -355,7 +411,12 @@ class ObjectSelector:
             object_description = floor_object["description"]
             object_size = floor_object["size"]
             quantity = min(floor_object["quantity"], 10)
-            variance_type = floor_object["variance_type"]
+
+            if "variance_type" not in floor_object:
+                print(
+                    f'[WARNING] variance_type not found in the the object:\n{floor_object}, will set this to be "same".'
+                )
+            variance_type = floor_object.get("variance_type", "same")
 
             candidates = self.object_retriever.retrieve(
                 [f"a 3D model of {object_type}, {object_description}"],

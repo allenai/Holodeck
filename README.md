@@ -22,7 +22,7 @@ After cloning the repo, you can install the required dependencies using the foll
 conda create --name holodeck python=3.10
 conda activate holodeck
 pip install -r requirements.txt
-pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+e24aa88d86d460f1f5352e28b8e754c3f5966865
+pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+8524eadda94df0ab2dbb2ef5a577e4d37c712897
 ```
 
 ## Data
@@ -33,14 +33,14 @@ python -m objathor.dataset.download_assets --version 2023_09_23
 python -m objathor.dataset.download_annotations --version 2023_09_23
 python -m objathor.dataset.download_features --version 2023_09_23
 ```
-by default these will save to `~/.objathor-assets/...`, you can change this director by specifying the `--path` argument. 
+by default these will save to `~/.objathor-assets/...`, you can change this director by specifying the `--path` argument.  If you change the `--path`, you'll need to set the `OBJAVERSE_ASSETS_DIR` environment variable to the path where the assets are stored when you use Holodeck.
 
 ## Usage
 You can use the following command to generate a new environment.
 ```
 python holodeck/main.py --query "a living room" --openai_api_key <OPENAI_API_KEY>
 ```
-To be noticed, our system uses `gpt-4-1106-preview`, so please ensure you have access to it.
+Our system uses `gpt-4-1106-preview`, **so please ensure you have access to it.**
 
 **Note:** To yield better layouts, use `DFS` as the solver. If you pull the repo before `12/28/2023`, you must set the [argument](https://github.com/allenai/Holodeck/blob/386b0a868def29175436dc3b1ed85b6309eb3cad/main.py#L78) `--use_milp` to `False` to use `DFS`.
 

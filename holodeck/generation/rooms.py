@@ -17,7 +17,7 @@ from shapely.geometry import LineString, Point, Polygon
 from tqdm import tqdm
 
 import holodeck.generation.prompts as prompts
-from holodeck.constants import HOLODECK_BASE_DATA_DIR
+from holodeck.constants import HOLODECK_BASE_DATA_DIR, DEBUGGING
 
 
 class FloorPlanGenerator:
@@ -127,6 +127,19 @@ class FloorPlanGenerator:
 
         if not valid:
             print(f"{Fore.RED}AI: {msg}{Fore.RESET}")
+
+            if DEBUGGING:
+                import matplotlib.pyplot as plt
+                import numpy as np
+
+                colors = plt.cm.rainbow(np.linspace(0, 1, len(parsed_plan)))
+                for room in parsed_plan:
+                    for i in range(len(room["vertices"])):
+                        a = room["vertices"][i]
+                        b = room["vertices"][(i + 1) % len(room["vertices"])]
+                        plt.plot([a[0], b[0]], [a[1], b[1]], color=colors[i])
+                plt.show()
+
             raise ValueError(msg)
         else:
             print(f"{Fore.GREEN}AI: {msg}{Fore.RESET}")
