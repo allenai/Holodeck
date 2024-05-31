@@ -52,7 +52,7 @@ Also, adhere to these additional requirements: {additional_requirements}.
 Provide a concise response, omitting any additional text at the beginning or end. """
 
 
-object_selection_prompt =  """Assist me in selecting large, floor-based objects to furnish each room, excluding mats, carpets, and rugs. Provide a comprehensive description since I will use it to retrieve object. If multiple identical items are to be placed in the room, please indicate the quantity.
+object_selection_prompt = """Assist me in selecting large, floor-based objects to furnish each room, excluding mats, carpets, and rugs. Provide a comprehensive description since I will use it to retrieve object. If multiple identical items are to be placed in the room, please indicate the quantity.
 
 Present your recommendations in this format: room type | object category | object description | quantity
 For example:
@@ -113,7 +113,7 @@ Here are the objects that I want to place in the {room_type}:
 Please first use natural language to explain your high-level design strategy, and then follow the desired format *strictly* (do not add any additional text at the beginning or end) to provide the constraints for each object."""
 
 
-wall_object_selection_prompt =  """Assist me in selecting wall-based objects to furnish each room.
+wall_object_selection_prompt = """Assist me in selecting wall-based objects to furnish each room.
 Present your recommendations in this format: room type | object category | object description | quantity
 For example:
 living room | painting | abstract painting | 2
@@ -136,7 +136,7 @@ The wall objects I want to place in the {room_type} are: {wall_objects}.
 Please do not add additional text at the beginning or in the end."""
 
 
-ceiling_selection_prompt =  """Assist me in selecting ceiling objects (light/fan) to furnish each room.
+ceiling_selection_prompt = """Assist me in selecting ceiling objects (light/fan) to furnish each room.
 Present your recommendations in this format: room type | ceiling object description
 For example:
 living room | modern, 3-light, semi-flush mount ceiling light
@@ -147,7 +147,7 @@ Please also consider the following additional requirements: {additional_requirem
 Your response should be precise, without additional text at the beginning or end. """
 
 
-small_object_selection_prompt =  """As an experienced room designer, you are tasked to bring life into the room by strategically placing more *small* objects. Those objects should only be arranged *on top of* large objects which serve as receptacles. 
+small_object_selection_prompt = """As an experienced room designer, you are tasked to bring life into the room by strategically placing more *small* objects. Those objects should only be arranged *on top of* large objects which serve as receptacles. 
 The output should be formatted as follows: receptacle | small object-1, quantity, variance type | small object-2, quantity, variance type | ...
 Here, the variance type specifies whether the small objects are same or varied. There's no restriction on the number of small objects you can select for each receptacle. An example of this format is as follows:
 sofa-0 (living room) | remote control for TV, 1, same | book, 2, varied | gray fabric pillow, 2, varied
@@ -174,7 +174,7 @@ Your response should solely contain the information about the placement of objec
 
 # Your response should be precise, without additional text at the beginning or end.
 
-object_selection_prompt_1 =  """You are an experienced room designer, please assist me in selecting *large* floor and wall objects to furnish each room. I want the objects that can be directly placed on the floor or wall, *not* the small objects that need to be placed on the large objects.
+object_selection_prompt_1 = """You are an experienced room designer, please assist me in selecting *large* floor and wall objects to furnish each room. I want the objects that can be directly placed on the floor or wall, *not* the small objects that need to be placed on the large objects.
 You must provide a comprehensive description for each object since I will use it to retrieve object. If multiple identical items are to be placed in the room, please indicate the quantity and variance type (same or varied).
 Present your recommendations in this format: room type | location | object category | object description | quantity, variance type
 For example:
@@ -203,8 +203,8 @@ Please make sure they can be directly placed on the floor or wall, not on other 
 Agent: """
 
 
-object_selection_prompt_new_1 =  """You are an experienced room designer, please assist me in selecting large *floor*/*wall* objects and small objects on top of them to furnish the room. You need to select appropriate objects to satisfy the customer's requirements.
-You must provide a description and desired size for each object since I will use it to retrieve object. If multiple identical items are to be placed in the room, please indicate the quantity and variance type (same or varied).
+object_selection_prompt_new_1 = """You are an experienced room designer, please assist me in selecting large *floor*/*wall* objects and small objects on top of them to furnish the room. You need to select appropriate objects to satisfy the customer's requirements.
+You must provide a description and desired size for each object since I will use it to retrieve object. If multiple items are to be placed in the room with the same description, please indicate the quantity and variance_type ("same" if they should be identical, otherwise "varied").
 Present your recommendations in JSON format:
 {
     object_name:{

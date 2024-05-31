@@ -8,7 +8,7 @@
 </h5>
 
 <h4 align="center">
-  <a href="https://arxiv.org/abs/2312.09067">Paper</i></a> | <a href="https://yueyang1996.github.io/holodeck/">Project Page</i></a>
+  <a href="https://arxiv.org/abs/2312.09067"><i>Paper</i></a> | <a href="https://yueyang1996.github.io/holodeck/"><i>Project Page</i></a>
 </h4>
 
 ## Requirements
@@ -21,25 +21,28 @@ Holodeck is based on [AI2-THOR](https://ai2thor.allenai.org/ithor/documentation/
 ## Installation
 After cloning the repo, you can install the required dependencies using the following commands:
 ```
-conda create --name holodeck python=3.9.16
+conda create --name holodeck python=3.10
 conda activate holodeck
 pip install -r requirements.txt
-pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+6f165fdaf3cf2d03728f931f39261d14a67414d0
+pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+8524eadda94df0ab2dbb2ef5a577e4d37c712897
 ```
 
 ## Data
-Download the data from [google drive](https://drive.google.com/file/d/1MQbFbNfTz94x8Pxfkgbohz4l46O5e3G1/view?usp=sharing) and extract it to the `data/` folder, or use the following command to download from S3:
+Download the data by running the following commands:
+```bash
+python -m objathor.dataset.download_holodeck_metadata --version 2023_09_23
+python -m objathor.dataset.download_assets --version 2023_09_23
+python -m objathor.dataset.download_annotations --version 2023_09_23
+python -m objathor.dataset.download_features --version 2023_09_23
 ```
-wget https://holodeck-ai2.s3.amazonaws.com/data.zip
-unzip data.zip
-```
+by default these will save to `~/.objathor-assets/...`, you can change this director by specifying the `--path` argument.  If you change the `--path`, you'll need to set the `OBJAVERSE_ASSETS_DIR` environment variable to the path where the assets are stored when you use Holodeck.
 
 ## Usage
 You can use the following command to generate a new environment.
 ```
-python main.py --query "a living room" --openai_api_key <OPENAI_API_KEY>
+python holodeck/main.py --query "a living room" --openai_api_key <OPENAI_API_KEY>
 ```
-To be noticed, our system uses `gpt-4-1106-preview`, so please ensure you have access to it.
+Our system uses `gpt-4-1106-preview`, **so please ensure you have access to it.**
 
 **Note:** To yield better layouts, use `DFS` as the solver. If you pull the repo before `12/28/2023`, you must set the [argument](https://github.com/allenai/Holodeck/blob/386b0a868def29175436dc3b1ed85b6309eb3cad/main.py#L78) `--use_milp` to `False` to use `DFS`.
 

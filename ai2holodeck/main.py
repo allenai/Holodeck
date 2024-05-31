@@ -1,40 +1,79 @@
 import ast
-import json
-from tqdm import tqdm
+import os
+import traceback
 from argparse import ArgumentParser
 
+import compress_json
+from tqdm import tqdm
+
+from ai2holodeck.constants import HOLODECK_BASE_DATA_DIR, OBJATHOR_ASSETS_DIR
 from ai2holodeck.generation.holodeck import Holodeck
+
+
+def str2bool(v: str):
+    v = v.lower().strip()
+    if v in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise ValueError(f"{v} cannot be converted to a bool")
 
 
 def generate_single_scene(args):
     folder_name = args.query.replace(" ", "_").replace("'", "")
-    try:
-        if args.original_scene is not None:
-            scene = json.load(open(args.original_scene, "r"))
-            print(f"Loading exist scene from {args.original_scene}.")
-        else:
-            scene = json.load(
-                open(f"data/scenes/{folder_name}/{folder_name}.json", "r")
-            )
-            print(
-                f"Loading exist scene from data/scenes/{folder_name}/{folder_name}.json."
-            )
-    except:
-        scene = args.model.get_empty_scene()
-        print("Generating from an empty scene.")
 
-    args.model.generate_scene(
-        scene=scene,
-        query=args.query,
-        save_dir=args.save_dir,
-        used_assets=args.used_assets,
-        generate_image=ast.literal_eval(args.generate_image),
-        generate_video=ast.literal_eval(args.generate_video),
-        add_ceiling=ast.literal_eval(args.add_ceiling),
-        add_time=ast.literal_eval(args.add_time),
-        use_constraint=ast.literal_eval(args.use_constraint),
-        use_milp=ast.literal_eval(args.use_milp),
-        random_selection=ast.literal_eval(args.random_selection),
+    scene = None
+    if args.original_scene is not None:
+        print(f"Loading original scene from {args.original_scene}.")
+        try:
+            scene = compress_json.load(args.original_scene)
+        except:
+            print(
+                f"[ERROR] Could not load original scene from given path {args.original_scene}."
+            )
+            raise
+    else:
+        path = os.path.join(
+            HOLODECK_BASE_DATA_DIR, f"scenes/{folder_name}/{folder_name}.json"
+        )
+        if os.path.exists(path):
+            print(f"Loading existing scene from {path}.")
+            try:
+                scene = compress_json.load(path)
+            except:
+                print(
+                    f"[ERROR] The path {path} exists but could not be loaded. Please delete"
+                    f" this file and try again."
+                )
+                raise
+
+    if scene is None:
+        print("Generating from an empty scene.")
+        scene = args.model.get_empty_scene()
+
+    try:
+        _, save_dir = args.model.generate_scene(
+            scene=scene,
+            query=args.query,
+            save_dir=args.save_dir,
+            used_assets=args.used_assets,
+            generate_image=ast.literal_eval(args.generate_image),
+            generate_video=ast.literal_eval(args.generate_video),
+            add_ceiling=ast.literal_eval(args.add_ceiling),
+            add_time=ast.literal_eval(args.add_time),
+            use_constraint=ast.literal_eval(args.use_constraint),
+            use_milp=ast.literal_eval(args.use_milp),
+            random_selection=ast.literal_eval(args.random_selection),
+        )
+    except:
+        print(
+            f"[ERROR] Could not generate scene from {args.query}. Traceback:\n{traceback.format_exc()}"
+        )
+        return
+
+    print(
+        f"Generation complete for {args.query}. Scene saved and any other data saved to {save_dir}."
     )
 
 
@@ -50,9 +89,10 @@ def generate_multi_scenes(args):
 
 def generate_variants(args):
     try:
-        original_scene = json.load(open(args.original_scene, "r"))
+        original_scene = compress_json.load(args.original_scene)
     except:
         raise Exception(f"Could not load original scene from {args.original_scene}.")
+
     try:
         args.model.generate_variants(
             query=args.query,
@@ -86,16 +126,15 @@ if __name__ == "__main__":
         help="Original scene to generate variants from.",
         default=None,
     )
-    parser.add_argument("--openai_api_key", help="OpenAI API key.", default=None)
     parser.add_argument(
-        "--objaverse_version",
-        help="Version of objaverse to use.",
-        default="09_23_combine_scale",
+        "--openai_api_key",
+        help="OpenAI API key. If none given, will attempt to read this from the OPENAI_API_KEY env variable.",
+        default=None,
     )
     parser.add_argument(
-        "--asset_dir",
-        help="Directory to load assets from.",
-        default="./data/objaverse_holodeck/09_23_combine_scale/processed_2023_09_23_combine_scale",
+        "--openai_org",
+        help="OpenAI ORG string. If none given, will attempt to read this from the OPENAI_ORG env variable.",
+        default=None,
     )
     parser.add_argument(
         "--save_dir", help="Directory to save scene to.", default="./data/scenes"
@@ -142,11 +181,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.openai_api_key is None:
+        args.openai_api_key = os.environ.get("OPENAI_API_KEY")
+
+    if args.openai_org is None:
+        args.openai_org = os.environ.get("OPENAI_ORG")
+
     args.model = Holodeck(
-        args.openai_api_key,
-        args.objaverse_version,
-        args.asset_dir,
-        ast.literal_eval(args.single_room),
+        openai_api_key=args.openai_api_key,
+        openai_org=args.openai_org,
+        objaverse_asset_dir=OBJATHOR_ASSETS_DIR,
+        single_room=ast.literal_eval(args.single_room),
     )
 
     if args.used_assets != [] and args.used_assets.endswith(".txt"):
@@ -164,3 +209,6 @@ if __name__ == "__main__":
 
     elif args.mode == "generate_variants":
         generate_variants(args)
+
+    else:
+        raise Exception(f"Mode {args.mode} not supported.")

@@ -33,8 +33,8 @@ def get_room2layer(room_pairs, open_room_pairs):
         if room == len(adjacency_list.keys()):
             return True
         for color in range(4):  # Use color range 0-3
-            if assign_color(list(adjacency_list.keys())[room], f'Procedural{color}'):
-                colors[list(adjacency_list.keys())[room]] = f'Procedural{color}'
+            if assign_color(list(adjacency_list.keys())[room], f"Procedural{color}"):
+                colors[list(adjacency_list.keys())[room]] = f"Procedural{color}"
                 if color_rooms(room + 1):
                     return True
                 colors[list(adjacency_list.keys())[room]] = -1
@@ -48,47 +48,55 @@ def get_room2layer(room_pairs, open_room_pairs):
 
 
 def map_asset2layer(scene):
-    room2layer = get_room2layer(scene['room_pairs'], scene['open_room_pairs'])
-    all_layers = ['Procedural0', 'Procedural1', 'Procedural2', 'Procedural3']
-    
+    room2layer = get_room2layer(scene["room_pairs"], scene["open_room_pairs"])
+    all_layers = ["Procedural0", "Procedural1", "Procedural2", "Procedural3"]
+
     if len(scene["rooms"]) == 1:
         print("Only one room in the scene. Assigning the room to Procedural0.")
         room2layer = {scene["rooms"][0]["id"]: "Procedural0"}
 
     # Check if all rooms are assigned a layer
-    for room in scene['rooms']:
-        if room['id'] not in room2layer:
-            room2layer[room['id']] = 'Procedural0'
+    for room in scene["rooms"]:
+        if room["id"] not in room2layer:
+            room2layer[room["id"]] = "Procedural0"
 
     # Assign layer to each room
-    for room in scene['rooms']:
-        room['layer'] = room2layer[room['id']]
+    for room in scene["rooms"]:
+        room["layer"] = room2layer[room["id"]]
 
     # Assign layer to each wall
-    for wall in scene['walls']:
-        wall['layer'] = room2layer[wall['roomId']]
-    
+    for wall in scene["walls"]:
+        wall["layer"] = room2layer[wall["roomId"]]
+
     # Assign layer to each object
     # TODO: consider small children objects
-    for obj in scene['objects']:
-        obj['layer'] = room2layer[obj['roomId']]
-    
+    for obj in scene["objects"]:
+        obj["layer"] = room2layer[obj["roomId"]]
+
     # Assign layer to each window
-    for window in scene['windows']:
-        window['layer'] = room2layer[window['roomId']]
+    for window in scene["windows"]:
+        window["layer"] = room2layer[window["roomId"]]
 
     # Assign layer to each light
-    for light in scene['proceduralParameters']['lights']:
-        try: light['layer'] = room2layer[light['roomId']]
-        except: continue
-        
-        light['cullingMaskOff'] = [layer for layer in all_layers if layer != light['layer']]
+    for light in scene["proceduralParameters"]["lights"]:
+        try:
+            light["layer"] = room2layer[light["roomId"]]
+        except:
+            continue
+
+        light["cullingMaskOff"] = [
+            layer for layer in all_layers if layer != light["layer"]
+        ]
 
     return scene
-    
+
 
 if __name__ == "__main__":
-    room_pairs = [('Living Room', 'Bedroom'), ('Living Room', 'Kitchen'), 
-                ('Kitchen', 'Bathroom'), ('Bedroom', 'Bathroom')]
-    open_room_pairs = [('Living Room', 'Kitchen'), ('Living Room', 'Bedroom')]
+    room_pairs = [
+        ("Living Room", "Bedroom"),
+        ("Living Room", "Kitchen"),
+        ("Kitchen", "Bathroom"),
+        ("Bedroom", "Bathroom"),
+    ]
+    open_room_pairs = [("Living Room", "Kitchen"), ("Living Room", "Bedroom")]
     room2layer = get_room2layer(room_pairs, open_room_pairs)
