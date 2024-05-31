@@ -191,7 +191,7 @@ class ObjectSelector:
             result["plan"] = plan_1
         else:
             print(
-                f"{Fore.RED}AI: The floor capacity of {room_type} is {floor_capacity[1]:.2g}m^2,"
+                f"{Fore.RED}AI: The used floor capacity of {room_type} is {floor_capacity[1]:.2g}m^2,"
                 f" which is less than {100*required_floor_capacity_percentage:.0f}% of the total floor capacity"
                 f" {floor_capacity[0]:.2g}m^2."
                 f"{Fore.RESET}"
