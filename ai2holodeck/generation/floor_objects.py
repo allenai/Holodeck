@@ -7,6 +7,7 @@ import random
 import re
 import time
 
+import editdistance
 import matplotlib.pyplot as plt
 import numpy as np
 from langchain import PromptTemplate, OpenAI
@@ -349,8 +350,17 @@ class FloorObjectGenerator:
                 try:
                     constraint_type = constraint_name2type[constraint_name]
                 except:
-                    print(f"constraint type {constraint_name} not found")
-                    continue
+                    _, new_constraint_name = min(
+                        [
+                            (editdistance.eval(cn, constraint_name), cn)
+                            for cn in constraint_name2type
+                        ]
+                    )
+                    print(
+                        f"constraint type {constraint_name} not found, using {new_constraint_name} instead."
+                    )
+                    constraint_name = new_constraint_name
+                    constraint_type = constraint_name2type[constraint_name]
 
                 if constraint_type == "global":
                     object2constraints[object_name].append(

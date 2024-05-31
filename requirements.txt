@@ -24,3 +24,4 @@ compress-pickle
 compress-json
 black
 objathor
+editdistance
