@@ -30,7 +30,7 @@ pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+8524ea
 ## Data
 Download the data by running the following commands:
 ```bash
-python -m objathor.dataset.download_holodeck_metadata --version 2023_09_23
+python -m objathor.dataset.download_holodeck_base_data --version 2023_09_23
 python -m objathor.dataset.download_assets --version 2023_09_23
 python -m objathor.dataset.download_annotations --version 2023_09_23
 python -m objathor.dataset.download_features --version 2023_09_23
