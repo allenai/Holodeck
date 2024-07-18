@@ -71,11 +71,13 @@ python connect_to_unity --scene <SCENE_JSON_FILE_PATH>
 Please cite the following paper if you use this code in your work.
 
 ```bibtex
-@article{yang2023holodeck,
-      title={Holodeck: Language Guided Generation of 3D Embodied AI Environments}, 
-      author={Yue Yang and Fan-Yun Sun and Luca Weihs and Eli VanderBilt and Alvaro Herrasti and Winson Han and Jiajun Wu and Nick Haber and Ranjay Krishna and Lingjie Liu and Chris Callison-Burch and Mark Yatskar and Aniruddha Kembhavi and Christopher Clark},
-      journal={arXiv preprint arXiv:2312.09067},
-      year={2023}
+@InProceedings{Yang_2024_CVPR,
+    author    = {Yang, Yue and Sun, Fan-Yun and Weihs, Luca and VanderBilt, Eli and Herrasti, Alvaro and Han, Winson and Wu, Jiajun and Haber, Nick and Krishna, Ranjay and Liu, Lingjie and Callison-Burch, Chris and Yatskar, Mark and Kembhavi, Aniruddha and Clark, Christopher},
+    title     = {Holodeck: Language Guided Generation of 3D Embodied AI Environments},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month     = {June},
+    year      = {2024},
+    pages     = {16227-16237}
 }
 ```
 <br />
