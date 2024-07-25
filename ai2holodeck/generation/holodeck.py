@@ -1,6 +1,6 @@
 import datetime
 import os
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 
 import compress_json
 import open_clip
@@ -198,8 +198,15 @@ class Holodeck:
         scene["walls"] = walls
         return scene
 
-    def select_objects(self, scene, additional_requirements_object, used_assets=[]):
-        self.object_selector.used_assets = used_assets
+    def select_objects(
+        self,
+        scene,
+        additional_requirements_object,
+        used_assets: Optional[List[str]] = None,
+    ):
+        if used_assets is not None:
+            self.object_selector.used_assets = used_assets
+
         object_selection_plan, selected_objects = self.object_selector.select_objects(
             scene, additional_requirements_object
         )
@@ -218,8 +225,10 @@ class Holodeck:
         scene["raw_ceiling_plan"] = raw_ceiling_plan
         return scene
 
-    def generate_small_objects(self, scene, used_assets=[]):
-        self.small_object_generator.used_assets = used_assets
+    def generate_small_objects(self, scene, used_assets: Optional[List[str]] = None):
+        if used_assets is not None:
+            self.small_object_generator.used_assets = used_assets
+
         controller = self.small_object_generator.start_controller(
             scene, self.objaverse_asset_dir
         )

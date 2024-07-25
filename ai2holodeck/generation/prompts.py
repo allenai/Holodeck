@@ -213,7 +213,8 @@ Present your recommendations in JSON format:
         "size": the desired size of the object, in the format of a list of three numbers, [length, width, height] in centimeters,
         "quantity": the number of objects (int),
         "variance_type": "same" or "varied",
-        "objects_on_top": a list of small children objects (can be empty) which are placed *on top of* this object. For each child object, you only need to provide the object name, quantity and variance type. For example, {"object_name": "book", "quantity": 2, "variance_type": "varied"}
+        "objects_on_top": a list of small children objects (can be empty) which are placed *on top of* this object. For each child object, you only need to provide the object name, quantity, variance type, and importance. For example, {"object_name": "book", "quantity": 2, "variance_type": "varied", "importance": 5}. Objects with higher "importance" should be those
+        that are more necessary to meet user and room requirements.
     }
 }
 
@@ -225,10 +226,11 @@ For example:
         "size": [200, 100, 80],
         "quantity": 1,
         "variance_type": "same",
+        "importance": "10",
         "objects_on_top": [
-            {"object_name": "news paper", "quantity": 2, "variance_type": "varied"},
-            {"object_name": "pillow", "quantity": 2, "variance_type": "varied"},
-            {"object_name": "mobile phone", "quantity": 1, "variance_type": "same"}
+            {"object_name": "pillow", "quantity": 2, "variance_type": "varied", "importance": 9},
+            {"object_name": "news paper", "quantity": 2, "variance_type": "varied", "importance": 2},
+            {"object_name": "mobile phone", "quantity": 1, "variance_type": "same", "importance": 2}
         ]
     },
     "tv stand": {
@@ -237,10 +239,11 @@ For example:
         "size": [200, 50, 50],
         "quantity": 1,
         "variance_type": "same",
+        "importance": "8",
         "objects_on_top": [
-            {"object_name": "49 inch TV", "quantity": 1, "variance_type": "same"},
-            {"object_name": "speaker", "quantity": 2, "variance_type": "same"},
-            {"object_name": "remote control for TV", "quantity": 1, "variance_type": "same"}
+            {"object_name": "49 inch TV", "quantity": 1, "variance_type": "same", "importance": 10},
+            {"object_name": "remote control for TV", "quantity": 1, "variance_type": "same", "importance": 6},
+            {"object_name": "speaker", "quantity": 2, "variance_type": "same", "importance": 5}
         ]
     },
     "painting": {
@@ -249,6 +252,7 @@ For example:
         "size": [100, 100, 5],
         "quantity": 2,
         "variance_type": "varied",
+        "importance": "6",
         "objects_on_top": []
     },
     "wall shelf": {
@@ -257,10 +261,11 @@ For example:
         "size": [100, 30, 50],
         "quantity": 1,
         "variance_type": "same",
+        "importance": "6",
         "objects_on_top": [
-            {"object_name": "small plant", "quantity": 2, "variance_type": "varied"},
-            {"object_name": "coffee mug", "quantity": 2, "variance_type": "varied"},
-            {"object_name": "book", "quantity": 5, "variance_type": "varied"}
+            {"object_name": "book", "quantity": 5, "variance_type": "varied", "importance": 5},
+            {"object_name": "small plant", "quantity": 2, "variance_type": "varied", "importance": 2},
+            {"object_name": "coffee mug", "quantity": 2, "variance_type": "varied", "importance": 2}
         ]
     }
 }

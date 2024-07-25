@@ -5,7 +5,7 @@ import multiprocessing
 import random
 import re
 import traceback
-from typing import Dict, List
+from typing import Dict, List, Optional, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -16,7 +16,16 @@ from shapely import Polygon
 import ai2holodeck.generation.prompts as prompts
 from ai2holodeck.generation.floor_objects import DFS_Solver_Floor
 from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
-from ai2holodeck.generation.utils import get_bbox_dims, get_annotations
+from ai2holodeck.generation.types import (
+    object_plan_from_dict,
+    ObjectPlanDict,
+    FloorOrWallObjectDict,
+)
+from ai2holodeck.generation.utils import (
+    get_bbox_dims,
+    get_annotations,
+    get_bbox_dims_vec,
+)
 from ai2holodeck.generation.wall_objects import DFS_Solver_Wall
 
 EXPECTED_OBJECT_ATTRIBUTES = [
@@ -123,7 +132,7 @@ class ObjectSelector:
                 for room_type in rooms_types
             ]
 
-            if self.multiprocessing:
+            if self.multiprocessing and len(packed_args) > 1:
                 pool = multiprocessing.Pool(processes=4)
                 results = pool.map(self.plan_room, packed_args)
                 pool.close()
@@ -154,7 +163,11 @@ class ObjectSelector:
         print(f"\n{Fore.GREEN}AI: Selecting objects for {room_type}...{Fore.RESET}\n")
 
         result = {}
-        room_size_str = f"{int(room2size[room_type][0])*100}cm in length, {int(room2size[room_type][1])*100}cm in width, {int(room2size[room_type][2])*100}cm in height"
+        room_size_str = (
+            f"{int(room2size[room_type][0])*100}cm in length,"
+            f" {int(room2size[room_type][1])*100}cm in width,"
+            f" {int(room2size[room_type][2])*100}cm in height"
+        )
 
         prompt_1 = (
             self.object_selection_template_1.replace("INPUT", scene["query"])
@@ -229,26 +242,7 @@ class ObjectSelector:
 
         return room_type, result
 
-    def _recursively_normalize_attribute_keys(self, obj):
-        if isinstance(obj, Dict):
-            return {
-                key.strip()
-                .lower()
-                .replace(" ", "_"): self._recursively_normalize_attribute_keys(value)
-                for key, value in obj.items()
-            }
-        elif isinstance(obj, List):
-            return [self._recursively_normalize_attribute_keys(value) for value in obj]
-        elif isinstance(obj, (str, int, float, bool)):
-            return obj
-        else:
-            print(
-                f"Unexpected type {type(obj)} in {obj} while normalizing attribute keys."
-                f" Returning the object as is."
-            )
-            return obj
-
-    def extract_json(self, input_string):
+    def extract_json(self, input_string: str) -> Optional[ObjectPlanDict]:
         # Using regex to identify the JSON structure in the string
         json_match = re.search(r"{.*}", input_string, re.DOTALL)
         if json_match:
@@ -271,17 +265,7 @@ class ObjectSelector:
                 )
                 return None
 
-            json_dict = self._recursively_normalize_attribute_keys(json_dict)
-            try:
-                json_dict = self.check_dict(json_dict)
-            except Exception as e:
-                print(
-                    f"{Fore.RED}[ERROR] Dictionary check failed for:"
-                    f"\n{json_dict}"
-                    f"\nFailure reason:{traceback.format_exception_only(e)}"
-                    f"{Fore.RESET}",
-                    flush=True,
-                )
+            json_dict = object_plan_from_dict(json_dict)
 
             return json_dict
 
@@ -289,81 +273,18 @@ class ObjectSelector:
             print(f"No valid JSON found in:\n{input_string}", flush=True)
             return None
 
-    def check_dict(self, dict):
-        valid = True
-
-        for key, value in dict.items():
-            if not isinstance(key, str):
-                valid = False
-                break
-
-            if not isinstance(value, Dict):
-                valid = False
-                break
-
-            for attribute in EXPECTED_OBJECT_ATTRIBUTES:
-                if attribute not in value:
-                    valid = False
-                    break
-
-            if not isinstance(value["description"], str):
-                valid = False
-                break
-
-            if value.get("location") not in ["floor", "wall"]:
-                dict[key]["location"] = "floor"
-
-            if (
-                not isinstance(value["size"], list)
-                or len(value["size"]) != 3
-                or not all(isinstance(i, int) for i in value["size"])
-            ):
-                dict[key]["size"] = None
-
-            if not isinstance(value["quantity"], int):
-                dict[key]["quantity"] = 1
-
-            if not isinstance(value.get("variance_type"), str) or value[
-                "variance_type"
-            ] not in ["same", "varied"]:
-                dict[key]["variance_type"] = "same"
-
-            if not isinstance(value.get("objects_on_top"), list):
-                dict[key]["objects_on_top"] = []
-
-            for i, child in enumerate(value["objects_on_top"]):
-                if not isinstance(child, Dict):
-                    valid = False
-                    break
-
-                for attribute in ["object_name", "quantity"]:
-                    if attribute not in child:
-                        valid = False
-                        break
-
-                if not isinstance(child["object_name"], str):
-                    valid = False
-                    break
-
-                if not isinstance(child["quantity"], int):
-                    dict[key]["objects_on_top"][i]["quantity"] = 1
-
-                if not isinstance(child.get("variance_type"), str) or child[
-                    "variance_type"
-                ] not in ["same", "varied"]:
-                    dict[key]["objects_on_top"][i]["variance_type"] = "same"
-
-        if not valid:
-            return None
-        else:
-            return dict
-
     def get_objects_by_room(
-        self, parsed_plan, scene, room_size, floor_capacity, wall_capacity, vertices
+        self,
+        parsed_plan: ObjectPlanDict,
+        scene,
+        room_size,
+        floor_capacity,
+        wall_capacity,
+        vertices,
     ):
         # get the floor and wall objects
-        floor_object_list = []
-        wall_object_list = []
+        floor_object_list: List[FloorOrWallObjectDict] = []
+        wall_object_list: List[FloorOrWallObjectDict] = []
         for object_name, object_info in parsed_plan.items():
             object_info["object_name"] = object_name
             if object_info["location"] == "floor":
@@ -403,20 +324,28 @@ class ObjectSelector:
         return room_polygon.length
 
     def get_floor_objects(
-        self, floor_object_list, floor_capacity, room_size, room_vertices, scene
+        self,
+        floor_object_list: List[FloorOrWallObjectDict],
+        floor_capacity,
+        room_size,
+        room_vertices,
+        scene,
     ):
         selected_floor_objects_all = []
-        for floor_object in floor_object_list:
+        for floor_object in sorted(
+            floor_object_list, key=lambda fo: -1 * fo["importance"]
+        ):
             object_type = floor_object["object_name"]
             object_description = floor_object["description"]
             object_size = floor_object["size"]
+            importance = floor_object["importance"]
             quantity = min(floor_object["quantity"], 10)
 
             if "variance_type" not in floor_object:
                 print(
                     f'[WARNING] variance_type not found in the the object:\n{floor_object}, will set this to be "same".'
                 )
-            variance_type = floor_object.get("variance_type", "same")
+            variance_type = floor_object["variance_type"]
 
             candidates = self.object_retriever.retrieve(
                 [f"a 3D model of {object_type}, {object_description}"],
@@ -452,11 +381,7 @@ class ObjectSelector:
 
             # No candidates found
             if len(candidates) == 0:
-                print(
-                    "No candidates found for {} {}".format(
-                        object_type, object_description
-                    )
-                )
+                print(f"No candidates found for {object_type} {object_description}")
                 continue
 
             # remove used assets
@@ -479,6 +404,7 @@ class ObjectSelector:
             candidates = candidates[:10]  # only select top 10 candidates
 
             selected_asset_ids = []
+
             if variance_type == "same":
                 selected_candidate = self.random_select(candidates)
                 selected_asset_id = selected_candidate[0]
@@ -491,70 +417,61 @@ class ObjectSelector:
                     selected_asset_ids.append(selected_asset_id)
                     if len(candidates) > 1:
                         candidates.remove(selected_candidate)
+            else:
+                raise NotImplementedError(
+                    f"Variance type {variance_type} is not supported."
+                )
 
             for i in range(quantity):
                 selected_asset_id = selected_asset_ids[i]
                 object_name = f"{object_type}-{i}"
-                selected_floor_objects_all.append((object_name, selected_asset_id))
+                selected_floor_objects_all.append(
+                    (object_name, selected_asset_id, importance)
+                )
 
-        # reselect objects if they exceed floor capacity, consider the diversity of objects
-        selected_floor_objects = []
-        while True:
-            if len(selected_floor_objects_all) == 0:
-                break
-            current_selected_asset_ids = []
-            current_number_of_objects = len(selected_floor_objects)
-            for object_name, selected_asset_id in selected_floor_objects_all:
-                if selected_asset_id not in current_selected_asset_ids:
-                    selected_asset_size = get_bbox_dims(
-                        self.database[selected_asset_id]
-                    )
-                    selected_asset_capacity = (
-                        selected_asset_size["x"] * selected_asset_size["z"]
-                    )
-                    if (
-                        floor_capacity[1] + selected_asset_capacity > floor_capacity[0]
-                        and len(selected_floor_objects) > 0
-                    ):
-                        print(
-                            f"{object_type} {object_description} exceeds floor capacity"
-                        )
-                    else:
-                        current_selected_asset_ids.append(selected_asset_id)
-                        selected_floor_objects.append((object_name, selected_asset_id))
-                        selected_floor_objects_all.remove(
-                            (object_name, selected_asset_id)
-                        )
-                        floor_capacity = (
-                            floor_capacity[0],
-                            floor_capacity[1] + selected_asset_capacity,
-                        )
-            if len(selected_floor_objects) == current_number_of_objects:
-                print("No more objects can be added")
-                break
+        # reselect objects if they exceed floor capacity
+        selected_floor_objects_filtered = []
+        for object_name, selected_asset_id, importance in selected_floor_objects_all:
+            x_size, _, z_size = get_bbox_dims_vec(self.database[selected_asset_id])
+            selected_asset_area = x_size * z_size
+            if (
+                floor_capacity[1] + selected_asset_area > floor_capacity[0]
+                and len(selected_floor_objects_filtered) > 0
+            ):
+                print(f"{object_name} {selected_asset_id} exceeds floor capacity")
+            else:
+                selected_floor_objects_filtered.append(
+                    (object_name, selected_asset_id, importance)
+                )
+                selected_floor_objects_all.remove(
+                    (object_name, selected_asset_id, importance)
+                )
+                floor_capacity = (
+                    floor_capacity[0],
+                    floor_capacity[1] + selected_asset_area,
+                )
 
-        # sort objects by object type
-        object_type2objects = {}
-        for object_name, selected_asset_id in selected_floor_objects:
-            object_type = object_name.split("-")[0]
-            if object_type not in object_type2objects:
-                object_type2objects[object_type] = []
-            object_type2objects[object_type].append((object_name, selected_asset_id))
-
-        selected_floor_objects_ordered = []
-        for object_type in object_type2objects:
-            selected_floor_objects_ordered += sorted(object_type2objects[object_type])
-
-        return selected_floor_objects_ordered, floor_capacity
+        return [
+            (on, aid)
+            for (on, aid, _) in sorted(
+                selected_floor_objects_filtered, key=lambda x: -x[-1]
+            )
+        ], floor_capacity
 
     def get_wall_objects(
-        self, wall_object_list, wall_capacity, room_size, room_vertices, scene
+        self,
+        wall_object_list: List[FloorOrWallObjectDict],
+        wall_capacity,
+        room_size,
+        room_vertices,
+        scene,
     ):
         selected_wall_objects_all = []
         for wall_object in wall_object_list:
             object_type = wall_object["object_name"]
             object_description = wall_object["description"]
             object_size = wall_object["size"]
+            importance = wall_object["importance"]
             quantity = min(wall_object["quantity"], 10)
             variance_type = wall_object["variance_type"]
 
@@ -596,11 +513,7 @@ class ObjectSelector:
             )
 
             if len(candidates) == 0:
-                print(
-                    "No candidates found for {} {}".format(
-                        object_type, object_description
-                    )
-                )
+                print(f"No candidates found for {object_type} {object_description}")
                 continue
 
             # remove used assets
@@ -635,59 +548,47 @@ class ObjectSelector:
                     selected_asset_ids.append(selected_asset_id)
                     if len(candidates) > 1:
                         candidates.remove(selected_candidate)
+            else:
+                raise NotImplementedError(
+                    f"Variance type {variance_type} is not supported."
+                )
 
             for i in range(quantity):
                 selected_asset_id = selected_asset_ids[i]
                 object_name = f"{object_type}-{i}"
-                selected_wall_objects_all.append((object_name, selected_asset_id))
+                selected_wall_objects_all.append(
+                    (object_name, selected_asset_id, importance)
+                )
 
         # reselect objects if they exceed wall capacity, consider the diversity of objects
-        selected_wall_objects = []
-        while True:
-            if len(selected_wall_objects_all) == 0:
-                break
-            current_selected_asset_ids = []
-            current_number_of_objects = len(selected_wall_objects)
-            for object_name, selected_asset_id in selected_wall_objects_all:
-                if selected_asset_id not in current_selected_asset_ids:
-                    selected_asset_size = get_bbox_dims(
-                        self.database[selected_asset_id]
-                    )
-                    selected_asset_capacity = selected_asset_size["x"]
-                    if (
-                        wall_capacity[1] + selected_asset_capacity > wall_capacity[0]
-                        and len(selected_wall_objects) > 0
-                    ):
-                        print(
-                            f"{object_type} {object_description} exceeds wall capacity"
-                        )
-                    else:
-                        current_selected_asset_ids.append(selected_asset_id)
-                        selected_wall_objects.append((object_name, selected_asset_id))
-                        selected_wall_objects_all.remove(
-                            (object_name, selected_asset_id)
-                        )
-                        wall_capacity = (
-                            wall_capacity[0],
-                            wall_capacity[1] + selected_asset_capacity,
-                        )
-            if len(selected_wall_objects) == current_number_of_objects:
-                print("No more objects can be added")
-                break
+        selected_wall_objects_filtered = []
+        for object_name, selected_asset_id, importance in selected_wall_objects_all:
+            selected_asset_capacity, _, _ = get_bbox_dims_vec(
+                self.database[selected_asset_id]
+            )
+            if (
+                wall_capacity[1] + selected_asset_capacity > wall_capacity[0]
+                and len(selected_wall_objects_filtered) > 0
+            ):
+                print(f"{object_name} {selected_asset_id} exceeds wall capacity")
+            else:
+                selected_wall_objects_filtered.append(
+                    (object_name, selected_asset_id, importance)
+                )
+                selected_wall_objects_all.remove(
+                    (object_name, selected_asset_id, importance)
+                )
+                wall_capacity = (
+                    wall_capacity[0],
+                    wall_capacity[1] + selected_asset_capacity,
+                )
 
-        # sort objects by object type
-        object_type2objects = {}
-        for object_name, selected_asset_id in selected_wall_objects:
-            object_type = object_name.split("-")[0]
-            if object_type not in object_type2objects:
-                object_type2objects[object_type] = []
-            object_type2objects[object_type].append((object_name, selected_asset_id))
-
-        selected_wall_objects_ordered = []
-        for object_type in object_type2objects:
-            selected_wall_objects_ordered += sorted(object_type2objects[object_type])
-
-        return selected_wall_objects_ordered, wall_capacity
+        return [
+            (on, aid)
+            for (on, aid, _) in sorted(
+                selected_wall_objects_filtered, key=lambda x: -x[-1]
+            )
+        ], wall_capacity
 
     def check_object_size(self, candidates, room_size):
         valid_candidates = []

@@ -16,6 +16,7 @@ from ai2holodeck.generation.utils import (
     get_bbox_dims,
     get_annotations,
     get_secondary_properties,
+    get_bbox_dims_vec,
 )
 
 
@@ -58,15 +59,20 @@ class SmallObjectGenerator:
         # Place the objects
         for receptacle, small_objects in receptacle2small_objects.items():
             placements = []
-            for object_name, asset_id, _ in small_objects:
+            for object_name, asset_id, _, _ in small_objects:
                 thin, rotation = self.check_thin_asset(asset_id)
                 small, y_rotation = self.check_small_asset(
                     asset_id
                 )  # check if the object is small and rotate around y axis randomly
 
-                obj = self.place_object(controller, asset_id, receptacle, rotation)
+                obj = self.place_object(
+                    controller=controller,
+                    object_id=asset_id,
+                    receptacle_id=receptacle,
+                    rotation=rotation,
+                )
 
-                if obj != None:  # If the object is successfully placed
+                if obj is not None:  # If the object is successfully placed
                     placement = self.json_template.copy()
                     placement["assetId"] = asset_id
                     placement["id"] = f"{object_name}|{receptacle}"
@@ -80,7 +86,7 @@ class SmallObjectGenerator:
                         obj["position"]["y"] + (asset_height / 2) + 0.001
                     )  # add half of the height to the y position and a small offset
                     placement["rotation"] = obj["rotation"]
-                    placement["roomId"] = receptacle.split("(")[1].split(")")[0]
+                    placement["roomId"] = receptacle.split("(")[1].split(")")[0].strip()
 
                     # temporary solution fix position and rotation for thin objects
                     if thin:
@@ -137,7 +143,7 @@ class SmallObjectGenerator:
         return receptacle2rotation
 
     def select_small_objects(
-        self, object_selection_plan, recpetacle_ids, receptacle2asset_id
+        self, object_selection_plan, receptacle_ids, receptacle2asset_id
     ):
         children_plans = []
         for room_type, objects in object_selection_plan.items():
@@ -149,7 +155,7 @@ class SmallObjectGenerator:
                     children_plans.append(child_plan)
 
         receptacle2small_object_plans = {}
-        for receptacle_id in recpetacle_ids:
+        for receptacle_id in receptacle_ids:
             small_object_plans = []
 
             for child_plan in children_plans:
@@ -188,15 +194,18 @@ class SmallObjectGenerator:
         receptacle_area = receptacle_size[0] * receptacle_size[1]
         capacity = 0
         num_objects = 0
-        sorted(receptacle_size)
-        for small_object in small_objects:
-            object_name, quantity, variance_type = (
+        receptacle_size.sort()
+        for small_object in sorted(small_objects, key=lambda x: -x["importance"]):
+            object_name, quantity, variance_type, importance = (
                 small_object["object_name"],
                 small_object["quantity"],
                 small_object["variance_type"],
+                small_object["importance"],
             )
             quantity = min(quantity, 5)  # maximum 5 objects per receptacle
-            print(f"Selecting {quantity} {object_name} for {receptacle}")
+            print(
+                f"Selecting {quantity} {object_name} for {receptacle} with importance {importance}"
+            )
             # Select the object
             candidates = self.object_retriever.retrieve(
                 [f"a 3D model of {object_name}"], self.clip_threshold
@@ -204,7 +213,7 @@ class SmallObjectGenerator:
             candidates = [
                 candidate
                 for candidate in candidates
-                if get_annotations(self.database[candidate[0]])["onObject"] == True
+                if get_annotations(self.database[candidate[0]])["onObject"]
             ]  # Only select objects that can be placed on other objects
 
             valid_candidates = []  # Only select objects with high confidence
@@ -249,37 +258,37 @@ class SmallObjectGenerator:
                     selected_asset_ids.append(selected_asset_id)
                     if len(valid_candidates) > 1:
                         valid_candidates.remove(selected_candidate)
+            else:
+                raise NotImplementedError(
+                    f"Variance type {variance_type} not supported."
+                )
 
             for i in range(quantity):
-                small_object_dimensions = get_bbox_dims(
+                x_size, _, z_size = get_bbox_dims_vec(
                     self.database[selected_asset_ids[i]]
                 )
-                small_object_sizes = [
-                    small_object_dimensions["x"],
-                    small_object_dimensions["y"],
-                    small_object_dimensions["z"],
-                ]
-                sorted(small_object_sizes)
-                # small_object_area = small_object_dimensions["x"] * small_object_dimensions["z"]
-                # take the maximum 2 dimensions and multiply them
-                small_object_area = small_object_sizes[1] * small_object_sizes[2] * 0.8
-                capacity += small_object_area
+                capacity += x_size * z_size
                 num_objects += 1
-                if capacity > receptacle_area * 0.9 and num_objects > 1:
+
+                if capacity > 1 * receptacle_area and num_objects > 1:
                     print(f"Warning: {receptacle} is overfilled.")
                     break
+
                 if num_objects > 15:
                     print(f"Warning: {receptacle} has too many objects.")
                     break
                 else:
-                    results.append((f"{object_name}-{i}", selected_asset_ids[i]))
+                    results.append(
+                        (f"{object_name}-{i}", selected_asset_ids[i], importance)
+                    )
 
         ordered_small_objects = []
-        for object_name, asset_id in results:
+        for object_name, asset_id, importance in results:
             dimensions = get_bbox_dims(self.database[asset_id])
             size = max(dimensions["x"], dimensions["z"])
-            ordered_small_objects.append((object_name, asset_id, size))
-        ordered_small_objects.sort(key=lambda x: x[2], reverse=True)
+            ordered_small_objects.append((object_name, asset_id, importance, size))
+
+        ordered_small_objects.sort(key=lambda x: x[-2:], reverse=True)
 
         return receptacle, ordered_small_objects
 
@@ -301,7 +310,7 @@ class SmallObjectGenerator:
         )
         return controller
 
-    def place_object(self, controller, object_id, receptacle_id, rotation=[0, 0, 0]):
+    def place_object(self, controller, object_id, receptacle_id, rotation=(0, 0, 0)):
         generated_id = f"small|{object_id}"
         # Spawn the object
         event = controller.step(
@@ -309,7 +318,7 @@ class SmallObjectGenerator:
             assetId=object_id,
             generatedId=generated_id,
             position=Vector3(x=0, y=FLOOR_Y - 20, z=0),
-            rotation=Vector3(x=0, y=0, z=0),
+            rotation=Vector3(x=rotation[0], y=rotation[1], z=rotation[2]),
             renderImage=False,
         )
 
@@ -324,7 +333,7 @@ class SmallObjectGenerator:
             allowFloor=False,
             renderImage=False,
             allowMoveable=True,
-            numPlacementAttempts=10,  # TODO: need to find a better way to determine the number of placement attempts
+            numPlacementAttempts=100,  # TODO: need to find a better way to determine the number of placement attempts
         )
 
         obj = next(

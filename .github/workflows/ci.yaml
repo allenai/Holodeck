@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: psf/black@stable
+      - uses: psf/black@24.2.0
   tests:
     runs-on: ubuntu-latest
     strategy:

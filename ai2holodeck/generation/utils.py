@@ -445,7 +445,7 @@ def get_annotations(obj_data: Dict[str, Any]):
         return obj_data
 
 
-def get_bbox_dims(obj_data: Dict[str, Any]):
+def get_bbox_dims(obj_data: Dict[str, Any]) -> Dict[str, float]:
     am = get_asset_metadata(obj_data)
 
     bbox_info = am["boundingBox"]
@@ -460,6 +460,11 @@ def get_bbox_dims(obj_data: Dict[str, Any]):
     maxs = bbox_info["max"]
 
     return {k: maxs[k] - mins[k] for k in ["x", "y", "z"]}
+
+
+def get_bbox_dims_vec(obj_data: Dict[str, Any]) -> np.ndarray:
+    bbox_info = get_bbox_dims(obj_data)
+    return np.array([bbox_info["x"], bbox_info["y"], bbox_info["z"]])
 
 
 def get_secondary_properties(obj_data: Dict[str, Any]):
