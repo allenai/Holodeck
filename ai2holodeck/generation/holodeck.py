@@ -16,7 +16,7 @@ from ai2holodeck.constants import (
     OBJATHOR_ANNOTATIONS_PATH,
     HOLODECK_THOR_FEATURES_DIR,
     HOLODECK_THOR_ANNOTATIONS_PATH,
-    LLM_MODEL_NAME,
+    LLM_MODEL_NAME, ABS_PATH_OF_HOLODECK,
 )
 from ai2holodeck.generation.ceiling_objects import CeilingObjectGenerator
 from ai2holodeck.generation.doors import DoorGenerator
@@ -137,7 +137,9 @@ class Holodeck:
         self.additional_requirements_ceiling = "N/A"
 
     def get_empty_scene(self):
-        return compress_json.load("generation/empty_house.json")
+        return compress_json.load(
+            os.path.join(ABS_PATH_OF_HOLODECK, "generation/empty_house.json")
+        )
 
     def empty_house(self, scene):
         scene["rooms"] = []
