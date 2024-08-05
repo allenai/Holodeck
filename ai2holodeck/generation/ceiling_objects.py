@@ -4,16 +4,17 @@ import re
 import torch
 import torch.nn.functional as F
 from colorama import Fore
-from langchain import PromptTemplate, OpenAI
+from langchain import PromptTemplate
 from shapely.geometry import Polygon
 
 import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.generation.llm import OpenAIWithTracking
 from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
 from ai2holodeck.generation.utils import get_bbox_dims, get_annotations
 
 
 class CeilingObjectGenerator:
-    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAIWithTracking):
         self.json_template = {
             "assetId": None,
             "id": None,
@@ -28,7 +29,7 @@ class CeilingObjectGenerator:
         self.database = object_retriever.database
         self.ceiling_template = PromptTemplate(
             input_variables=["input", "rooms", "additional_requirements"],
-            template=prompts.ceiling_selection_prompt,
+            template=prompts.CEILING_SELECTION_PROMPT,
         )
 
     def generate_ceiling_objects(self, scene, additional_requirements_ceiling="N/A"):
@@ -110,8 +111,8 @@ class CeilingObjectGenerator:
         return None
 
     def select_ceiling_object(self, description):
-        candidates = self.object_retriever.retrieve(
-            [f"a 3D model of {description}"], threshold=29
+        candidates = self.object_retriever.retrieve_with_name_and_desc(
+            object_names=None, object_descriptions=[description], threshold=29
         )
         ceiling_candiates = [
             candidate

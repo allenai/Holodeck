@@ -3,14 +3,15 @@ import random
 
 import numpy as np
 from colorama import Fore
-from langchain import PromptTemplate, OpenAI
+from langchain import PromptTemplate
 from shapely.geometry import LineString, Polygon, Point
 
 import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.generation.llm import OpenAIWithTracking
 
 
 class WallGenerator:
-    def __init__(self, llm: OpenAI):
+    def __init__(self, llm: OpenAIWithTracking):
         self.json_template = {
             "id": None,
             "roomId": None,
@@ -19,7 +20,7 @@ class WallGenerator:
         }
         self.llm = llm
         self.wall_height_template = PromptTemplate(
-            input_variables=["input"], template=prompts.wall_height_prompt
+            input_variables=["input"], template=prompts.WALL_HEIGHT_PROMPT
         )
         self.used_assets = []
 

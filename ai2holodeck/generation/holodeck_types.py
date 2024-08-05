@@ -1,4 +1,4 @@
-from typing import List, TypedDict, Dict, Literal, Union, Any, Optional
+from typing import List, TypedDict, Dict, Literal, Union, Any, Optional, NamedTuple
 
 
 class ObjectsOnTopDict(TypedDict):
@@ -19,8 +19,16 @@ class FloorOrWallObjectDict(TypedDict):
     objects_on_top: List[ObjectsOnTopDict]
 
 
-class ObjectPlanDict(Dict[str, FloorOrWallObjectDict]):
-    pass
+class ObjectPlanForRoomDict(Dict[str, FloorOrWallObjectDict]):
+    pass  # Maps object names to object plans
+
+
+class ObjectPlanForSceneDict(Dict[str, ObjectPlanForRoomDict]):
+    pass  # Maps room_ids to object plans
+
+
+def _normalize_attribute_keys(d: Dict[str, Any]) -> Dict[str, Any]:
+    return {key.strip().lower().replace(" ", "_"): value for key, value in d.items()}
 
 
 def _recursively_normalize_attribute_keys(obj: Any) -> Any:
@@ -45,6 +53,7 @@ def _recursively_normalize_attribute_keys(obj: Any) -> Any:
 
 def objects_on_top_from_dict(obj: Dict[str, Any]) -> Optional[ObjectsOnTopDict]:
     try:
+        _normalize_attribute_keys(obj)
         object_name = obj["object_name"]
         quantity = int(obj["quantity"])
         variance_type = obj.get("variance_type", "same")
@@ -68,6 +77,8 @@ def floor_or_wall_object_from_dict(
     obj: Dict[str, Any]
 ) -> Optional[FloorOrWallObjectDict]:
     try:
+        _normalize_attribute_keys(obj)
+
         object_name = obj.get("object_name")
         description = obj["description"]
         location = obj.get("location", "floor")
@@ -108,9 +119,42 @@ def floor_or_wall_object_from_dict(
     }
 
 
-def object_plan_from_dict(obj: Dict[str, Dict[str, Any]]) -> ObjectPlanDict:
-    obj = _recursively_normalize_attribute_keys(obj)
+def object_plan_from_dict(obj: Dict[str, Dict[str, Any]]) -> ObjectPlanForRoomDict:
+
     opd = {key: floor_or_wall_object_from_dict(value) for key, value in obj.items()}
-    return ObjectPlanDict(
+    return ObjectPlanForRoomDict(
         (k, {**v, "object_name": k}) for k, v in opd.items() if v is not None
     )
+
+
+class SelectedSmallObject(NamedTuple):
+    object_name: str
+    asset_id: str
+    importance: float
+    size: float
+
+
+class PlacedSmallObject(TypedDict):
+    assetId: str
+    id: str
+    kinematic: bool
+    position: Dict[str, float]
+    rotation: Dict[str, float]
+    material: str
+    roomId: str
+
+
+class HolodeckScenePlanDict(TypedDict):
+    object_selection_plan: ObjectPlanForSceneDict
+    receptacle_id_to_small_objects: Dict[str, PlacedSmallObject]
+    small_objects: List[PlacedSmallObject]
+
+
+class SmallObjectPlan(TypedDict):
+    object_name: str
+    quantity: int
+    variance_type: str
+    importance: Union[int, float]
+
+    room_name: str  # Name of the room this object is in, may not exist
+    parent: str  # Object name of the parent receptacle, may not exist

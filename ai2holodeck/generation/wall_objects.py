@@ -1,22 +1,27 @@
 import copy
-import multiprocessing
 import random
 import re
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from langchain import PromptTemplate, OpenAI
+from langchain import PromptTemplate
 from shapely.geometry import Polygon, box, Point, LineString
 from shapely.ops import substring
 
 import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.constants import MULTIPROCESSING
+from ai2holodeck.generation.llm import OpenAIWithTracking
 from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
-from ai2holodeck.generation.utils import get_bbox_dims
+from ai2holodeck.generation.utils import (
+    get_bbox_dims,
+    wait_for_futures_and_raise_errors,
+    get_executor,
+)
 
 
 class WallObjectGenerator:
-    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAIWithTracking):
         self.json_template = {
             "assetId": None,
             "id": None,
@@ -36,11 +41,13 @@ class WallObjectGenerator:
                 "floor_objects",
                 "wall_objects",
             ],
-            template=prompts.wall_object_constraints_prompt,
+            template=prompts.WALL_OBJECT_CONSTRAINTS_PROMPT,
         )
         self.grid_size = 25
         self.default_height = 150
         self.constraint_type = "llm"
+
+        self.multiprocessing = MULTIPROCESSING
 
     def generate_wall_objects(self, scene, use_constraint=True):
         doors = scene["doors"]
@@ -64,28 +71,41 @@ class WallObjectGenerator:
             )
             for room in scene["rooms"]
         ]
-        pool = multiprocessing.Pool(processes=4)
-        all_placements = pool.map(self.generate_wall_objects_per_room, packed_args)
-        pool.close()
-        pool.join()
+
+        with get_executor(self.multiprocessing) as executor:
+            all_placements = wait_for_futures_and_raise_errors(
+                [
+                    executor.submit(
+                        self.generate_wall_objects_per_room,
+                        room=room,
+                        scene=scene,
+                        doors=doors,
+                        windows=windows,
+                        open_walls=open_walls,
+                        wall_height=wall_height,
+                        selected_objects=selected_objects,
+                        use_constraint=use_constraint,
+                    )
+                    for room in scene["rooms"]
+                ]
+            )
 
         for placements in all_placements:
             wall_objects += placements
 
         return wall_objects
 
-    def generate_wall_objects_per_room(self, args):
-        (
-            room,
-            scene,
-            doors,
-            windows,
-            open_walls,
-            wall_height,
-            selected_objects,
-            use_constraint,
-        ) = args
-
+    def generate_wall_objects_per_room(
+        self,
+        room,
+        scene,
+        doors,
+        windows,
+        open_walls,
+        wall_height,
+        selected_objects,
+        use_constraint,
+    ):
         selected_wall_objects = selected_objects[room["roomType"]]["wall"]
         selected_wall_objects = self.order_objects_by_size(selected_wall_objects)
         wall_object_name2id = {

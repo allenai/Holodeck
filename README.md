@@ -24,7 +24,7 @@ After cloning the repo, you can install the required dependencies using the foll
 conda create --name holodeck python=3.10
 conda activate holodeck
 pip install -r requirements.txt
-pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+8524eadda94df0ab2dbb2ef5a577e4d37c712897
+pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+40679c517859e09c1f2a5e39b65ee7f33fcfdd48
 ```
 
 ## Data

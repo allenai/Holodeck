@@ -1,33 +1,48 @@
 import copy
-import multiprocessing
+import itertools
 import random
+import warnings
+from typing import Sequence, Tuple, Dict, List, Any, Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from ai2thor.controller import Controller
 from ai2thor.hooks.procedural_asset_hook import ProceduralAssetHookRunner
-from langchain import OpenAI
 from procthor.constants import FLOOR_Y
 from procthor.utils.types import Vector3
 
-from ai2holodeck.constants import THOR_COMMIT_ID
+from ai2holodeck.constants import THOR_COMMIT_ID, MULTIPROCESSING
+from ai2holodeck.generation.holodeck_types import (
+    HolodeckScenePlanDict,
+    ObjectPlanForSceneDict,
+    SmallObjectPlan,
+    SelectedSmallObject,
+    PlacedSmallObject,
+)
+from ai2holodeck.generation.llm import OpenAIWithTracking
 from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
+from ai2holodeck.generation.object_selector import compare_object_name_to_descriptions
 from ai2holodeck.generation.utils import (
     get_bbox_dims,
     get_annotations,
     get_secondary_properties,
     get_bbox_dims_vec,
+    get_executor,
+    wait_for_futures_and_raise_errors,
 )
+
+PROB_SMALL_OBJECT_ROTATION_LARGE = 0.2
 
 
 class SmallObjectGenerator:
-    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAIWithTracking):
         self.llm = llm
         self.object_retriever = object_retriever
         self.database = object_retriever.database
 
         # set kinematic to false for small objects
-        self.json_template = {
+        self.json_template: PlacedSmallObject = {
             "assetId": None,
             "id": None,
             "kinematic": False,
@@ -41,41 +56,62 @@ class SmallObjectGenerator:
         self.used_assets = []
         self.reuse_assets = True
 
-    def generate_small_objects(self, scene, controller, receptacle_ids):
+        self.multiprocessing = MULTIPROCESSING
+
+    def select_small_objects_from_plan(
+        self,
+        scene: HolodeckScenePlanDict,
+        controller: Controller,
+        receptacle_ids: Sequence[str],
+    ) -> Tuple[List[PlacedSmallObject], Dict[str, SelectedSmallObject]]:
         object_selection_plan = scene["object_selection_plan"]
 
-        receptacle2asset_id = self.get_receptacle2asset_id(scene, receptacle_ids)
-        # receptacle2rotation = self.get_receptacle2rotation(scene, receptacle_ids)
-        # receptacle2position = self.get_receptacle2position(scene, receptacle_ids)
+        receptacle_id_to_asset_id = self.get_receptacle_id_to_asset_id(scene=scene)
 
-        if "receptacle2small_objects" in scene and self.reuse_assets:
-            receptacle2small_objects = scene["receptacle2small_objects"]
+        if "receptacle_id_to_small_objects" in scene and self.reuse_assets:
+            receptacle_id_to_small_objects: Dict[str, SelectedSmallObject] = scene[
+                "receptacle_id_to_small_objects"
+            ]
         else:
-            receptacle2small_objects = self.select_small_objects(
-                object_selection_plan, receptacle_ids, receptacle2asset_id
+            receptacle_id_to_small_objects: Dict[str, SelectedSmallObject] = (
+                self.select_small_object_instances_for_plan(
+                    object_selection_plan=object_selection_plan,
+                    receptacle_ids=receptacle_ids,
+                    receptacle_id_to_asset_id=receptacle_id_to_asset_id,
+                )
             )
 
-        results = []
+        results: List[PlacedSmallObject] = []
         # Place the objects
-        for receptacle, small_objects in receptacle2small_objects.items():
+        for receptacle_id, small_objects in receptacle_id_to_small_objects.items():
             placements = []
             for object_name, asset_id, _, _ in small_objects:
+                # check if the object is thin and, if so, rotate it so it lies flat
                 thin, rotation = self.check_thin_asset(asset_id)
-                small, y_rotation = self.check_small_asset(
-                    asset_id
-                )  # check if the object is small and rotate around y axis randomly
 
-                obj = self.place_object(
+                # check if the object is small and rotate around y axis randomly
+                small, y_rotation = self.check_small_asset(asset_id)
+
+                receptacle_obj = next(
+                    obj
+                    for obj in controller.last_event.metadata["objects"]
+                    if obj["objectId"] == receptacle_id
+                )
+                if rotation[0] == rotation[2] == 0:
+                    # Rotate the object to match the receptacle
+                    rotation[1] = receptacle_obj["rotation"]["y"] + y_rotation
+
+                obj = self.attempt_to_place_object_on_receptacle_in_scene(
                     controller=controller,
-                    object_id=asset_id,
-                    receptacle_id=receptacle,
+                    asset_id=asset_id,
+                    receptacle_id=receptacle_id,
                     rotation=rotation,
                 )
 
                 if obj is not None:  # If the object is successfully placed
-                    placement = self.json_template.copy()
+                    placement: PlacedSmallObject = self.json_template.copy()
                     placement["assetId"] = asset_id
-                    placement["id"] = f"{object_name}|{receptacle}"
+                    placement["id"] = f"{object_name}|{receptacle_id}"
                     placement["position"] = obj["position"]
                     asset_height = get_bbox_dims(self.database[asset_id])["y"]
 
@@ -86,22 +122,21 @@ class SmallObjectGenerator:
                         obj["position"]["y"] + (asset_height / 2) + 0.001
                     )  # add half of the height to the y position and a small offset
                     placement["rotation"] = obj["rotation"]
-                    placement["roomId"] = receptacle.split("(")[1].split(")")[0].strip()
+                    placement["roomId"] = (
+                        receptacle_id.split("(")[1].split(")")[0].strip()
+                    )
 
-                    # temporary solution fix position and rotation for thin objects
                     if thin:
+                        # TODO: temporary solution fix position and rotation for thin objects
                         placement = self.fix_placement_for_thin_assets(placement)
 
                     if small:
-                        placement["rotation"][
-                            "y"
-                        ] = y_rotation  # temporary solution for random rotation around y axis for small objects
-                    # else: placement["rotation"]["y"] = receptacle2rotation[receptacle]["y"]
+                        # TODO: temporary solution for random rotation around y axis for small objects
+                        placement["rotation"]["y"] = y_rotation
 
                     if not small and not thin:
-                        placement["kinematic"] = (
-                            True  # set kinematic to true for non-small objects
-                        )
+                        # set kinematic to true for non-small objects
+                        placement["kinematic"] = True
 
                     if "CanBreak" in get_secondary_properties(self.database[asset_id]):
                         placement["kinematic"] = True
@@ -113,88 +148,97 @@ class SmallObjectGenerator:
             results.extend(valid_placements)
 
         controller.stop()
-        return results, receptacle2small_objects
+        return results, receptacle_id_to_small_objects
 
-    def get_receptacle2asset_id(self, scene, receptacle_ids):
-        receptacle2asset_id = {}
+    def get_receptacle_id_to_asset_id(self, scene: HolodeckScenePlanDict):
+        receptacle_id_to_asset_id = {}
         for object in scene["objects"]:
-            receptacle2asset_id[object["id"]] = object["assetId"]
-        # for receptacle_id in receptacle_ids:
-        #     if receptacle_id not in receptacle2asset_id and "___" in receptacle_id:
-        #         receptacle2asset_id[receptacle_id] = receptacle2asset_id[receptacle_id.split("___")[0]]
-        return receptacle2asset_id
+            receptacle_id_to_asset_id[object["id"]] = object["assetId"]
+        return receptacle_id_to_asset_id
 
-    def get_receptacle2rotation(self, scene, receptacle_ids):
-        receptacle2rotation = {}
+    def get_receptacle_id_to_rotation(self, scene: HolodeckScenePlanDict):
+        receptacle_id_to_rotation = {}
         for object in scene["objects"]:
-            receptacle2rotation[object["id"]] = object["rotation"]
-        # for receptacle_id in receptacle_ids:
-        #     if receptacle_id not in receptacle2rotation and "___" in receptacle_id:
-        #         receptacle2rotation[receptacle_id] = receptacle2rotation[receptacle_id.split("___")[0]]
-        return receptacle2rotation
+            receptacle_id_to_rotation[object["id"]] = object["rotation"]
+        return receptacle_id_to_rotation
 
-    def get_receptacle2position(self, scene, receptacle_ids):
+    def get_receptacle_id_to_position(self, scene: HolodeckScenePlanDict):
         receptacle2rotation = {}
         for object in scene["objects"]:
             receptacle2rotation[object["id"]] = object["position"]
-        # for receptacle_id in receptacle_ids:
-        #     if receptacle_id not in receptacle2rotation and "___" in receptacle_id:
-        #         receptacle2rotation[receptacle_id] = receptacle2rotation[receptacle_id.split("___")[0]]
         return receptacle2rotation
 
-    def select_small_objects(
-        self, object_selection_plan, receptacle_ids, receptacle2asset_id
+    def select_small_object_instances_for_plan(
+        self,
+        object_selection_plan: ObjectPlanForSceneDict,
+        receptacle_ids: Sequence[str],
+        receptacle_id_to_asset_id: Sequence[str],
     ):
-        children_plans = []
-        for room_type, objects in object_selection_plan.items():
+        child_plans = []
+        for room_name, objects in object_selection_plan.items():
             for object_name, object_info in objects.items():
                 for child in object_info["objects_on_top"]:
                     child_plan = copy.deepcopy(child)
-                    child_plan["room_type"] = room_type
+                    child_plan["room_name"] = room_name
                     child_plan["parent"] = object_name
-                    children_plans.append(child_plan)
+                    child_plans.append(child_plan)
 
-        receptacle2small_object_plans = {}
+        receptacle_id_to_small_object_plans = {}
         for receptacle_id in receptacle_ids:
-            small_object_plans = []
+            small_object_plans_for_receptacle = []
 
-            for child_plan in children_plans:
+            for child_plan in child_plans:
+                # TODO: This is a silly way to check if the child is in the receptacle based
+                #  on partial string matching parts of the receptacle id
                 if (
-                    child_plan["room_type"] in receptacle_id
+                    child_plan["room_name"] in receptacle_id
                     and child_plan["parent"] in receptacle_id
                 ):
-                    small_object_plans.append(child_plan)
+                    small_object_plans_for_receptacle.append(child_plan)
 
-            if len(small_object_plans) > 0:
-                receptacle2small_object_plans[receptacle_id] = small_object_plans
+            if len(small_object_plans_for_receptacle) > 0:
+                receptacle_id_to_small_object_plans[receptacle_id] = (
+                    small_object_plans_for_receptacle
+                )
 
-        receptacle2small_objects = {}
-        packed_args = [
-            (receptacle, small_objects, receptacle2asset_id)
-            for receptacle, small_objects in receptacle2small_object_plans.items()
+        packed_kwargs = [
+            {
+                "receptacle_id": receptacle_id,
+                "receptacle_asset_id": receptacle_id_to_asset_id[receptacle_id],
+                "small_objects": small_objects,
+            }
+            for receptacle_id, small_objects in receptacle_id_to_small_object_plans.items()
         ]
-        pool = multiprocessing.Pool(processes=4)
-        results = pool.map(self.select_small_objects_per_receptacle, packed_args)
-        pool.close()
-        pool.join()
 
-        for result in results:
-            receptacle2small_objects[result[0]] = result[1]
+        with get_executor(self.multiprocessing) as executor:
+            return dict(
+                wait_for_futures_and_raise_errors(
+                    [
+                        executor.submit(
+                            self.select_small_object_instances_on_receptacle, **kwargs
+                        )
+                        for kwargs in packed_kwargs
+                    ]
+                )
+            )
 
-        return receptacle2small_objects
+    def _select_small_object_instances_on_receptacle(self, kwargs):
+        return self.select_small_object_instances_on_receptacle(**kwargs)
 
-    def select_small_objects_per_receptacle(self, args):
-        receptacle, small_objects, receptacle2asset_id = args
-
+    def select_small_object_instances_on_receptacle(
+        self,
+        receptacle_id: str,
+        receptacle_asset_id: str,
+        small_objects: Sequence[SmallObjectPlan],
+    ) -> Tuple[str, Sequence[SelectedSmallObject]]:
         results = []
-        receptacle_dimensions = get_bbox_dims(
-            self.database[receptacle2asset_id[receptacle]]
-        )
+        receptacle_dimensions = get_bbox_dims(self.database[receptacle_asset_id])
         receptacle_size = [receptacle_dimensions["x"], receptacle_dimensions["z"]]
         receptacle_area = receptacle_size[0] * receptacle_size[1]
         capacity = 0
         num_objects = 0
         receptacle_size.sort()
+
         for small_object in sorted(small_objects, key=lambda x: -x["importance"]):
             object_name, quantity, variance_type, importance = (
                 small_object["object_name"],
@@ -202,13 +246,18 @@ class SmallObjectGenerator:
                 small_object["variance_type"],
                 small_object["importance"],
             )
-            quantity = min(quantity, 5)  # maximum 5 objects per receptacle
+            # maximum 5 of the same object type/name per receptacle
+            quantity = min(quantity, 5)
             print(
-                f"Selecting {quantity} {object_name} for {receptacle} with importance {importance}"
+                f"Placing on {receptacle_id}: selecting {quantity} {object_name} with importance {importance}"
             )
             # Select the object
-            candidates = self.object_retriever.retrieve(
-                [f"a 3D model of {object_name}"], self.clip_threshold
+            candidates: Sequence[Tuple[str, float]] = (
+                self.object_retriever.retrieve_with_name_and_desc(
+                    object_names=[object_name],
+                    object_descriptions=None,
+                    threshold=self.clip_threshold,
+                )
             )
             candidates = [
                 candidate
@@ -221,15 +270,31 @@ class SmallObjectGenerator:
             for candidate in candidates:
                 candidate_dimensions = get_bbox_dims(self.database[candidate[0]])
                 candidate_size = [candidate_dimensions["x"], candidate_dimensions["z"]]
-                sorted(candidate_size)
+                candidate_size.sort()
                 if (
                     candidate_size[0] < receptacle_size[0] * 0.9
                     and candidate_size[1] < receptacle_size[1] * 0.9
                 ):  # if the object is smaller than the receptacle, threshold is 90%
                     valid_candidates.append(candidate)
 
+            valid_candidates = valid_candidates[:25]
+            candidate_scores = compare_object_name_to_descriptions(
+                object_name=object_name,
+                asset_ids=[candidate[0] for candidate in valid_candidates],
+                database=self.database,
+                llm=self.llm,
+            )
+            score_and_val_candidate_list = list(zip(candidate_scores, valid_candidates))
+            score_and_val_candidate_list.sort(key=lambda x: x[0], reverse=True)
+
+            valid_candidates = [
+                candidate
+                for candidate_scores, candidate in score_and_val_candidate_list
+                if candidate_scores >= 5
+            ]
+
             if len(valid_candidates) == 0:
-                print(f"No valid candidate for {object_name}.")
+                warnings.warn(f"No valid candidate for {object_name}.")
                 continue
 
             # remove used assets
@@ -264,33 +329,23 @@ class SmallObjectGenerator:
                 )
 
             for i in range(quantity):
-                x_size, _, z_size = get_bbox_dims_vec(
-                    self.database[selected_asset_ids[i]]
+                results.append(
+                    (f"{object_name}-{i}", selected_asset_ids[i], importance)
                 )
-                capacity += x_size * z_size
-                num_objects += 1
 
-                if capacity > 1 * receptacle_area and num_objects > 1:
-                    print(f"Warning: {receptacle} is overfilled.")
-                    break
-
-                if num_objects > 15:
-                    print(f"Warning: {receptacle} has too many objects.")
-                    break
-                else:
-                    results.append(
-                        (f"{object_name}-{i}", selected_asset_ids[i], importance)
-                    )
+            print(f"Small objects selected for {object_name}: {results[-quantity:]}")
 
         ordered_small_objects = []
         for object_name, asset_id, importance in results:
             dimensions = get_bbox_dims(self.database[asset_id])
             size = max(dimensions["x"], dimensions["z"])
-            ordered_small_objects.append((object_name, asset_id, importance, size))
+            ordered_small_objects.append(
+                SelectedSmallObject(object_name, asset_id, importance, size)
+            )
 
         ordered_small_objects.sort(key=lambda x: x[-2:], reverse=True)
 
-        return receptacle, ordered_small_objects
+        return receptacle_id, ordered_small_objects
 
     def start_controller(self, scene, objaverse_dir):
         controller = Controller(
@@ -310,17 +365,59 @@ class SmallObjectGenerator:
         )
         return controller
 
-    def place_object(self, controller, object_id, receptacle_id, rotation=(0, 0, 0)):
-        generated_id = f"small|{object_id}"
-        # Spawn the object
-        event = controller.step(
-            action="SpawnAsset",
-            assetId=object_id,
-            generatedId=generated_id,
-            position=Vector3(x=0, y=FLOOR_Y - 20, z=0),
-            rotation=Vector3(x=rotation[0], y=rotation[1], z=rotation[2]),
-            renderImage=False,
+    def attempt_to_place_object_on_receptacle_in_scene(
+        self,
+        controller: Controller,
+        asset_id: str,
+        receptacle_id: str,
+        rotation=(0, 0, 0),
+    ) -> Optional[Dict[str, Any]]:
+
+        generated_id = f"small|{asset_id}|"
+        generated_id = generated_id + str(
+            sum(
+                [
+                    obj["objectId"].startswith(generated_id)
+                    for obj in controller.last_event.metadata["objects"]
+                ],
+                0,
+            )
         )
+
+        # Spawn the object
+        try:
+            controller.step(
+                action="SpawnAsset",
+                assetId=asset_id,
+                generatedId=generated_id,
+                position=Vector3(x=0, y=FLOOR_Y - 20, z=0),
+                rotation=Vector3(x=rotation[0], y=rotation[1], z=rotation[2]),
+                renderImage=False,
+                raise_for_failure=True,
+            )
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except:
+            warnings.warn(
+                f"Failed to spawn {asset_id} with {generated_id}: {controller.last_event.metadata['errorMessage']}"
+            )
+            return None
+
+        def get_obj():
+            obj = next(
+                obj
+                for obj in event.metadata["objects"]
+                if obj["objectId"] == generated_id
+            )
+            return obj
+
+        def object_placed_successfully():
+            return (
+                receptacle_id
+                in controller.step(
+                    "CheckWhatObjectOn", objectId=generated_id, belowDistance=2e-2
+                ).metadata["actionReturn"]
+            )
 
         # Place the object in the receptacle
         # Question: Can I spawn multiple objects at once?
@@ -336,13 +433,53 @@ class SmallObjectGenerator:
             numPlacementAttempts=100,  # TODO: need to find a better way to determine the number of placement attempts
         )
 
-        obj = next(
-            obj for obj in event.metadata["objects"] if obj["objectId"] == generated_id
-        )
-        center_position = obj["axisAlignedBoundingBox"]["center"].copy()
+        if object_placed_successfully():
+            print(f"Placed {asset_id} on {receptacle_id} with InitialRandomSpawn")
+            return get_obj()
+        else:
+            receptacle = next(
+                obj
+                for obj in event.metadata["objects"]
+                if obj["objectId"] == receptacle_id
+            )
+            corners = np.array(receptacle["axisAlignedBoundingBox"]["cornerPoints"])
+            min_x, _, min_z = corners.min(0)
+            max_x, max_y, max_z = corners.max(0)
 
-        if event and center_position["y"] > FLOOR_Y:
-            return obj
+            obj = get_obj()
+            obj_diameter = max(
+                obj["axisAlignedBoundingBox"]["size"]["x"],
+                obj["axisAlignedBoundingBox"]["size"]["z"],
+            )
+
+            if obj_diameter <= max_x - min_x and obj_diameter <= max_z - min_z:
+                random_positions = random.sample(
+                    list(
+                        itertools.product(
+                            np.linspace(min_x + obj_diameter, max_x - obj_diameter, 10),
+                            [max_y + 0.01],
+                            np.linspace(min_z + obj_diameter, max_z - obj_diameter, 10),
+                        )
+                    ),
+                    10,
+                )
+
+                for x, y, z in random_positions:
+                    event = controller.step(
+                        "PlaceObjectAtPoint",
+                        position=Vector3(x=x, y=y, z=z),
+                        objectId=generated_id,
+                    )
+
+                    if not event:
+                        continue
+
+                    if object_placed_successfully():
+                        print(f"Placed {asset_id} on {receptacle_id} with PlaceAtPoint")
+                        break
+
+        if object_placed_successfully():
+            return get_obj()
         else:
             controller.step(
                 action="DisableObject",
@@ -409,18 +546,13 @@ class SmallObjectGenerator:
 
         return placement
 
-    def check_small_asset(self, asset_id):
-        dimensions = get_bbox_dims(self.database[asset_id])
-        size = (dimensions["x"] * 100, dimensions["y"] * 100, dimensions["z"] * 100)
-        threshold = 25 * 25  # 25cm * 25cm is the threshold for small objects
-
-        if (
-            size[0] * size[2] <= threshold
-            and size[0] <= 25
-            and size[1] <= 25
-            and size[2] <= 25
-        ):
-            return True, random.randint(0, 360)
+    def check_small_asset(self, asset_id: str):
+        dims = get_bbox_dims_vec(self.database[asset_id])
+        if (dims < 0.25).all():
+            if random.random() < PROB_SMALL_OBJECT_ROTATION_LARGE:
+                return True, random.randint(0, 360)
+            else:
+                return True, random.randint(-15, 15)
         else:
             return False, 0
 
@@ -434,7 +566,7 @@ class SmallObjectGenerator:
         selected_candidate = candidates[selected_index]
         return selected_candidate
 
-    def check_collision(self, placements):
+    def check_collision(self, placements: Sequence[PlacedSmallObject]):
         static_placements = [
             placement for placement in placements if placement["kinematic"] == True
         ]

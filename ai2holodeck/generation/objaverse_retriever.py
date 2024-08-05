@@ -1,10 +1,15 @@
 import os
+from typing import Tuple, Sequence, Optional
 
 import compress_json
 import compress_pickle
 import numpy as np
+import open_clip
 import torch
 import torch.nn.functional as F
+import tqdm
+from filelock import FileLock
+from torch.utils.data import DataLoader
 
 from ai2holodeck.constants import (
     OBJATHOR_ANNOTATIONS_PATH,
@@ -12,7 +17,8 @@ from ai2holodeck.constants import (
     OBJATHOR_FEATURES_DIR,
     HOLODECK_THOR_FEATURES_DIR,
 )
-from ai2holodeck.generation.utils import get_bbox_dims
+from ai2holodeck.generation.utils import get_bbox_dims_vec
+from objathor.dataset.generate_holodeck_features import ObjectDataset, DEFAULT_DEVICE
 
 
 class ObjathorRetriever:
@@ -26,47 +32,65 @@ class ObjathorRetriever:
     ):
         objathor_annotations = compress_json.load(OBJATHOR_ANNOTATIONS_PATH)
         thor_annotations = compress_json.load(HOLODECK_THOR_ANNOTATIONS_PATH)
+
         self.database = {**objathor_annotations, **thor_annotations}
 
-        objathor_clip_features_dict = compress_pickle.load(
+        objathor_clip_features_dict = self._load_clip_features_and_check_has_text(
             os.path.join(OBJATHOR_FEATURES_DIR, f"clip_features.pkl")
-        )  # clip features
+        )
         objathor_sbert_features_dict = compress_pickle.load(
             os.path.join(OBJATHOR_FEATURES_DIR, f"sbert_features.pkl")
-        )  # sbert features
+        )
         assert (
             objathor_clip_features_dict["uids"] == objathor_sbert_features_dict["uids"]
         )
 
         objathor_uids = objathor_clip_features_dict["uids"]
-        objathor_clip_features = objathor_clip_features_dict["img_features"].astype(
+        objathor_clip_img_features = objathor_clip_features_dict["img_features"].astype(
             np.float32
         )
-        objathor_sbert_features = objathor_sbert_features_dict["text_features"].astype(
-            np.float32
-        )
+        objathor_clip_text_features = objathor_clip_features_dict[
+            "text_features"
+        ].astype(np.float32)
+        objathor_sbert_text_features = objathor_sbert_features_dict[
+            "text_features"
+        ].astype(np.float32)
 
-        thor_clip_features_dict = compress_pickle.load(
+        thor_clip_features_dict = self._load_clip_features_and_check_has_text(
             os.path.join(HOLODECK_THOR_FEATURES_DIR, "clip_features.pkl")
-        )  # clip features
+        )
         thor_sbert_features_dict = compress_pickle.load(
             os.path.join(HOLODECK_THOR_FEATURES_DIR, "sbert_features.pkl")
-        )  # clip features
+        )
         assert thor_clip_features_dict["uids"] == thor_sbert_features_dict["uids"]
 
         thor_uids = thor_clip_features_dict["uids"]
-        thor_clip_features = thor_clip_features_dict["img_features"].astype(np.float32)
-        thor_sbert_features = thor_sbert_features_dict["text_features"].astype(
+        thor_clip_img_features = thor_clip_features_dict["img_features"].astype(
+            np.float32
+        )
+        thor_clip_text_features = thor_clip_features_dict["text_features"].astype(
+            np.float32
+        )
+        thor_sbert_text_features = thor_sbert_features_dict["text_features"].astype(
             np.float32
         )
 
-        self.clip_features = torch.from_numpy(
-            np.concatenate([objathor_clip_features, thor_clip_features], axis=0)
+        self.clip_img_features = torch.from_numpy(
+            np.concatenate([objathor_clip_img_features, thor_clip_img_features], axis=0)
         )
-        self.clip_features = F.normalize(self.clip_features, p=2, dim=-1)
+        self.clip_img_features = F.normalize(self.clip_img_features, p=2, dim=-1)
 
-        self.sbert_features = torch.from_numpy(
-            np.concatenate([objathor_sbert_features, thor_sbert_features], axis=0)
+        self.clip_text_features = torch.from_numpy(
+            np.concatenate(
+                [objathor_clip_text_features, thor_clip_text_features], axis=0
+            )
+        )
+        self.clip_text_features = F.normalize(self.clip_text_features, p=2, dim=-1)
+
+        self.sbert_text_features = torch.from_numpy(
+            np.concatenate(
+                [objathor_sbert_text_features, thor_sbert_text_features], axis=0
+            )
         )
 
         self.asset_ids = objathor_uids + thor_uids
@@ -78,36 +102,159 @@ class ObjathorRetriever:
 
         self.retrieval_threshold = retrieval_threshold
 
-        self.use_text = True
+    def _load_clip_features_and_check_has_text(self, clip_features_path: str):
+        with FileLock(clip_features_path + ".lock"):
+            clip_features_dict = compress_pickle.load(clip_features_path)
+            if "text_features" not in clip_features_dict:
+                print(
+                    f"CLIP text features not found in {clip_features_path}. We will add these now, but this may take a while."
+                )
 
-    def retrieve(self, queries, threshold=28):
-        with torch.no_grad():
-            query_feature_clip = self.clip_model.encode_text(
-                self.clip_tokenizer(queries)
+            else:
+                return clip_features_dict
+
+            annotations = {
+                uid: self.database[uid] for uid in clip_features_dict["uids"]
+            }
+            for ann in annotations.values():
+                assert (
+                    ann["description"] is not None
+                    or ann["description_auto"] is not None
+                )
+
+            dataset = ObjectDataset(
+                annotations=annotations,
+                asset_dir=None,
+                image_preprocessor=None,
             )
 
-            query_feature_clip = F.normalize(query_feature_clip, p=2, dim=-1)
+            dataloader = DataLoader(
+                dataset, batch_size=16, shuffle=False, num_workers=4
+            )
 
-        clip_similarities = 100 * torch.einsum(
-            "ij, lkj -> ilk", query_feature_clip, self.clip_features
+            clip_model_name = "ViT-L-14"
+            pretrained = "laion2b_s32b_b82k"
+            clip_model, _, _ = open_clip.create_model_and_transforms(
+                model_name=clip_model_name, pretrained=pretrained, device=DEFAULT_DEVICE
+            )
+            clip_tokenizer = open_clip.get_tokenizer(clip_model_name)
+
+            uids = clip_features_dict["uids"]
+            new_uids = []
+            clip_text_features = []
+            with torch.no_grad():
+                with tqdm.tqdm(total=len(uids)) as pbar:
+                    for batch in dataloader:
+                        new_uids.extend(batch["uid"])
+
+                        clip_text_features.append(
+                            clip_model.encode_text(
+                                clip_tokenizer(batch["text"]).to(DEFAULT_DEVICE)
+                            ).cpu()
+                        )
+
+                        pbar.update(len(batch["uid"]))
+
+            clip_text_features = (
+                torch.cat(clip_text_features, dim=0).numpy().astype("float16")
+            )
+            uid_to_text_feature = {
+                uid: text_feature
+                for uid, text_feature in zip(new_uids, clip_text_features)
+            }
+            reordered_text_features = [
+                uid_to_text_feature[uid] for uid in clip_features_dict["uids"]
+            ]
+
+            clip_text_features = np.stack(reordered_text_features, axis=0)
+            clip_features_dict["text_features"] = clip_text_features
+            compress_pickle.dump(clip_features_dict, clip_features_path)
+
+            return clip_features_dict
+
+    def retrieve_with_name_and_desc(
+        self,
+        object_names: Optional[Sequence[str]],
+        object_descriptions: Optional[Sequence[str]],
+        threshold=28,
+    ) -> Sequence[Tuple[str, float]]:
+        assert (
+            object_names is not None or object_descriptions is not None
+        ), "At least one of object_names or object_descriptions must be provided"
+
+        if object_names is not None and object_descriptions is not None:
+            assert len(object_names) == len(
+                object_descriptions
+            ), f"object_names and object_descriptions must have the same length but got {len(object_names)} and {len(object_descriptions)}"
+
+        if object_names is None:
+            object_names = [None] * len(object_descriptions)
+
+        if object_descriptions is None:
+            object_descriptions = [None] * len(object_names)
+
+        img_queries = []
+        text_queries = []
+        for object_name, object_desc in zip(object_names, object_descriptions):
+            q_img_list = []
+            q_text_list = []
+
+            if object_name is not None:
+                q_img_list.append(f"a 3D model of {object_name}")
+                q_text_list.append(f"a {object_name}")
+
+            if object_desc is not None:
+                if object_name is None:
+                    q_img_list.append(f"a 3D model of {object_desc}")
+                else:
+                    q_img_list.append(object_desc)
+                q_text_list.append(object_desc)
+
+            img_queries.append(", ".join(q_img_list))
+            text_queries.append(", ".join(q_text_list))
+
+        return self.retrieve(
+            img_queries=img_queries, text_queries=text_queries, threshold=threshold
         )
-        clip_similarities = torch.max(clip_similarities, dim=-1).values
 
-        query_feature_sbert = self.sbert_model.encode(
-            queries, convert_to_tensor=True, show_progress_bar=False
+    def retrieve(
+        self,
+        img_queries: Sequence[str],
+        text_queries: Optional[Sequence[str]] = None,
+        threshold=28,
+    ) -> Sequence[Tuple[str, float]]:
+        if text_queries is None:
+            text_queries = img_queries
+
+        with torch.no_grad():
+            img_query_features_clip = self.clip_model.encode_text(
+                self.clip_tokenizer(img_queries)
+            )
+            img_query_features_clip = F.normalize(img_query_features_clip, p=2, dim=-1)
+
+            text_query_features_clip = self.clip_model.encode_text(
+                self.clip_tokenizer(text_queries)
+            )
+            text_query_features_clip = F.normalize(
+                text_query_features_clip, p=2, dim=-1
+            )
+
+        clip_img_similarities = 100 * torch.einsum(
+            "ij, lkj -> ilk", img_query_features_clip, self.clip_img_features
         )
-        sbert_similarities = query_feature_sbert @ self.sbert_features.T
+        clip_img_similarities = torch.max(clip_img_similarities, dim=-1).values
 
-        if self.use_text:
-            similarities = clip_similarities + sbert_similarities
-        else:
-            similarities = clip_similarities
+        clip_text_similarities = 100 * torch.einsum(
+            "ij, lj -> il", text_query_features_clip, self.clip_text_features
+        )
 
-        threshold_indices = torch.where(clip_similarities > threshold)
+        joint_similiarities = clip_img_similarities + clip_text_similarities
+
+        threshold_indices = torch.where(clip_img_similarities > threshold)
 
         unsorted_results = []
         for query_index, asset_index in zip(*threshold_indices):
-            score = similarities[query_index, asset_index].item()
+            score = joint_similiarities[query_index, asset_index].item()
             unsorted_results.append((self.asset_ids[asset_index], score))
 
         # Sorting the results in descending order by score
@@ -118,8 +265,7 @@ class ObjathorRetriever:
     def compute_size_difference(self, target_size, candidates):
         candidate_sizes = []
         for uid, _ in candidates:
-            size = get_bbox_dims(self.database[uid])
-            size_list = [size["x"] * 100, size["y"] * 100, size["z"] * 100]
+            size_list = (100 * get_bbox_dims_vec(self.database[uid])).tolist()
             size_list.sort()
             candidate_sizes.append(size_list)
 

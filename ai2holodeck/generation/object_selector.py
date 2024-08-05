@@ -1,32 +1,36 @@
 import ast
 import copy
 import json
-import multiprocessing
 import random
 import re
-import traceback
-from typing import Dict, List, Optional, Sequence
+import warnings
+from typing import Dict, List, Optional, Sequence, Any
 
 import torch
 import torch.nn.functional as F
 from colorama import Fore
-from langchain import PromptTemplate, OpenAI
 from shapely import Polygon
 
 import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.constants import SMALL_LLM_MODEL_NAME, MULTIPROCESSING
 from ai2holodeck.generation.floor_objects import DFS_Solver_Floor
-from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
-from ai2holodeck.generation.types import (
+from ai2holodeck.generation.holodeck_types import (
     object_plan_from_dict,
-    ObjectPlanDict,
+    ObjectPlanForRoomDict,
     FloorOrWallObjectDict,
+    HolodeckScenePlanDict,
 )
+from ai2holodeck.generation.llm import OpenAIWithTracking
+from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
 from ai2holodeck.generation.utils import (
     get_bbox_dims,
     get_annotations,
     get_bbox_dims_vec,
+    get_executor,
+    wait_for_futures_and_raise_errors,
 )
 from ai2holodeck.generation.wall_objects import DFS_Solver_Wall
+from objathor.utils.queries import Text
 
 EXPECTED_OBJECT_ATTRIBUTES = [
     "description",
@@ -37,24 +41,84 @@ EXPECTED_OBJECT_ATTRIBUTES = [
     "objects_on_top",
 ]
 
+MAX_SINGLE_OBJ_QUANTITY = 10
+
+
+COMPARISON_TEMPLATE = """\
+Below I have {NUM} descriptions of objects. Formatted as a list:
+1. <DESCRIPTION 1>
+2. <DESCRIPTION 2>
+... 
+
+For each description, I want you to compare how similar the object is to a {OBJECT_NAME} and answer with a number between 0 (very dissimilar) and 10 (very similar) and no other text.
+I.e. respond with
+1. <NUMBER 1>
+2. <NUMBER 2>
+...
+
+Object descriptions:
+{ALL_DESCRIPTIONS}
+"""
+
+
+def compare_object_name_to_descriptions(
+    object_name: str,
+    asset_ids: Sequence[str],
+    database: Dict[str, Dict[str, Any]],
+    llm: OpenAIWithTracking,
+):
+    descriptions = []
+    for asset_id in asset_ids:
+        description = get_annotations(database[asset_id])["description"]
+        if description is None:
+            description = "a " + get_annotations(database[asset_id])["description_auto"]
+
+        descriptions.append(description.replace("\n", " "))
+
+    descriptions = [
+        f"{index+1}. {description}" for index, description in enumerate(descriptions)
+    ]
+    all_descriptions = "\n".join(descriptions)
+
+    output = llm.get_answer(
+        model=SMALL_LLM_MODEL_NAME,
+        messages=[
+            Text(
+                "You are a helpful AI assistant that expertly helps people compare objects.",
+                role="system",
+            ),
+            Text(
+                COMPARISON_TEMPLATE.format(
+                    NUM=len(descriptions),
+                    OBJECT_NAME=object_name,
+                    ALL_DESCRIPTIONS=all_descriptions,
+                ),
+                role="user",
+            ),
+        ],
+    )
+
+    line_num_to_score = {}
+    for line in output.split("\n"):
+        try:
+            line_num, score = line.split(".")
+            line_num = int(line_num)
+            score = float(score)
+            line_num_to_score[line_num] = score
+        except ValueError:
+            pass
+
+    return [line_num_to_score.get(index + 1, -1) for index in range(len(descriptions))]
+
 
 class ObjectSelector:
-    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAIWithTracking):
         # object retriever
         self.object_retriever = object_retriever
         self.database = object_retriever.database
 
         # language model and prompt templates
         self.llm = llm
-        self.object_selection_template_1 = prompts.object_selection_prompt_new_1
-        self.object_selection_template_2 = PromptTemplate(
-            input_variables=[
-                "object_selection_prompt_new_1",
-                "object_selection_1",
-                "room",
-            ],
-            template=prompts.object_selection_prompt_new_2,
-        )
 
         # hyperparameters
         self.floor_capacity_ratio = 0.4
@@ -69,7 +133,7 @@ class ObjectSelector:
 
         self.random_selection = False
         self.reuse_selection = False
-        self.multiprocessing = True
+        self.multiprocessing = MULTIPROCESSING
 
     def select_objects(self, scene, additional_requirements="N/A"):
         rooms_types = [room["roomType"] for room in scene["rooms"]]
@@ -132,13 +196,10 @@ class ObjectSelector:
                 for room_type in rooms_types
             ]
 
-            if self.multiprocessing and len(packed_args) > 1:
-                pool = multiprocessing.Pool(processes=4)
-                results = pool.map(self.plan_room, packed_args)
-                pool.close()
-                pool.join()
-            else:
-                results = [self.plan_room(args) for args in packed_args]
+            with get_executor(self.multiprocessing) as executor:
+                results = wait_for_futures_and_raise_errors(
+                    [executor.submit(self.plan_room, *args) for args in packed_args]
+                )
 
             for room_type, result in results:
                 selected_objects[room_type]["floor"] = result["floor"]
@@ -150,16 +211,16 @@ class ObjectSelector:
         )
         return object_selection_plan, selected_objects
 
-    def plan_room(self, args):
-        (
-            room_type,
-            scene,
-            additional_requirements,
-            room2size,
-            room2floor_capacity,
-            room2wall_capacity,
-            room2vertices,
-        ) = args
+    def plan_room(
+        self,
+        room_type,
+        scene,
+        additional_requirements,
+        room2size,
+        room2floor_capacity,
+        room2wall_capacity,
+        room2vertices,
+    ):
         print(f"\n{Fore.GREEN}AI: Selecting objects for {room_type}...{Fore.RESET}\n")
 
         result = {}
@@ -169,18 +230,40 @@ class ObjectSelector:
             f" {int(room2size[room_type][2])*100}cm in height"
         )
 
-        prompt_1 = (
-            self.object_selection_template_1.replace("INPUT", scene["query"])
+        messages = [
+            Text(
+                content=(
+                    prompts.WALL_FLOOR_AND_SMALL_OBJECT_SELECTION_SYSTEM_PROMPT.replace(
+                        "REQUIREMENTS", additional_requirements
+                    )
+                ),
+                role="system",
+            ),
+        ]
+
+        user_message = (
+            prompts.WALL_FLOOR_AND_SMALL_OBJECT_SELECTION_USER_PROMPT.replace(
+                "INPUT", scene["query"]
+            )
             .replace("ROOM_TYPE", room_type)
             .replace("ROOM_SIZE", room_size_str)
-            .replace("REQUIREMENTS", additional_requirements)
         )
+        if additional_requirements.strip().lower() != "n/a":
+            user_message += (
+                " "
+                + prompts.WALL_FLOOR_AND_SMALL_OBJECT_SELECTION_USER_EXTRA_REQUIREMENTS_PROMPT.replace(
+                    "REQUIREMENTS", additional_requirements
+                )
+            )
 
-        output_1 = self.llm(prompt_1).lower()
+        messages.append(Text(content=user_message, role="user"))
+        messages.append(Text(self.llm.get_answer(messages), role="assistant"))
+
+        output_1 = messages[-1].content.lower()
         plan_1 = self.extract_json(output_1)
 
         if plan_1 is None:
-            print(f"Error while extracting the JSON for {room_type}.")
+            warnings.warn(f"Error while extracting the JSON for {room_type}.")
             return result
 
         (
@@ -189,12 +272,12 @@ class ObjectSelector:
             wall_objects,
             wall_capacity,
         ) = self.get_objects_by_room(
-            plan_1,
-            scene,
-            room2size[room_type],
-            room2floor_capacity[room_type],
-            room2wall_capacity[room_type],
-            room2vertices[room_type],
+            parsed_plan=plan_1,
+            scene=scene,
+            room_size=room2size[room_type],
+            floor_capacity=room2floor_capacity[room_type],
+            wall_capacity=room2wall_capacity[room_type],
+            vertices=room2vertices[room_type],
         )
 
         required_floor_capacity_percentage = 0.8
@@ -204,17 +287,20 @@ class ObjectSelector:
             result["plan"] = plan_1
         else:
             print(
-                f"{Fore.RED}AI: The used floor capacity of {room_type} is {floor_capacity[1]:.2g}m^2,"
+                f"{Fore.RED}USER: The used floor capacity of {room_type} is {floor_capacity[1]:.2g}m^2,"
                 f" which is less than {100*required_floor_capacity_percentage:.0f}% of the total floor capacity"
-                f" {floor_capacity[0]:.2g}m^2."
+                f" {floor_capacity[0]:.2g}m^2. Asking the LLM to add additional objects."
                 f"{Fore.RESET}"
             )
-            prompt_2 = self.object_selection_template_2.format(
-                object_selection_prompt_new_1=prompt_1,
-                object_selection_1=output_1,
-                room=room_type,
+            messages.append(
+                Text(
+                    content=prompts.WALL_FLOOR_AND_SMALL_OBJECT_SELECTION_PROMPT_ADD_MORE_OBJECTS_FOLLOWUP.format(
+                        room=room_type,
+                    ),
+                    role="user",
+                )
             )
-            output_2 = self.llm(prompt_2).lower()
+            output_2 = self.llm.get_answer(messages).lower()
             plan_2 = self.extract_json(output_2)
 
             if plan_2 is None:
@@ -242,7 +328,7 @@ class ObjectSelector:
 
         return room_type, result
 
-    def extract_json(self, input_string: str) -> Optional[ObjectPlanDict]:
+    def extract_json(self, input_string: str) -> Optional[ObjectPlanForRoomDict]:
         # Using regex to identify the JSON structure in the string
         json_match = re.search(r"{.*}", input_string, re.DOTALL)
         if json_match:
@@ -275,8 +361,8 @@ class ObjectSelector:
 
     def get_objects_by_room(
         self,
-        parsed_plan: ObjectPlanDict,
-        scene,
+        parsed_plan: ObjectPlanForRoomDict,
+        scene: HolodeckScenePlanDict,
         room_size,
         floor_capacity,
         wall_capacity,
@@ -326,30 +412,26 @@ class ObjectSelector:
     def get_floor_objects(
         self,
         floor_object_list: List[FloorOrWallObjectDict],
-        floor_capacity,
+        floor_capacity: List[float],
         room_size,
         room_vertices,
-        scene,
+        scene: HolodeckScenePlanDict,
     ):
         selected_floor_objects_all = []
         for floor_object in sorted(
             floor_object_list, key=lambda fo: -1 * fo["importance"]
         ):
-            object_type = floor_object["object_name"]
+            object_name = floor_object["object_name"]
             object_description = floor_object["description"]
             object_size = floor_object["size"]
             importance = floor_object["importance"]
-            quantity = min(floor_object["quantity"], 10)
-
-            if "variance_type" not in floor_object:
-                print(
-                    f'[WARNING] variance_type not found in the the object:\n{floor_object}, will set this to be "same".'
-                )
+            quantity = min(floor_object["quantity"], MAX_SINGLE_OBJ_QUANTITY)
             variance_type = floor_object["variance_type"]
 
-            candidates = self.object_retriever.retrieve(
-                [f"a 3D model of {object_type}, {object_description}"],
-                self.similarity_threshold_floor,
+            candidates = self.object_retriever.retrieve_with_name_and_desc(
+                object_names=[object_name],
+                object_descriptions=[object_description],
+                threshold=self.similarity_threshold_floor,
             )
 
             candidates = [
@@ -374,14 +456,29 @@ class ObjectSelector:
             # check if the object is too big
             candidates = self.check_object_size(candidates, room_size)
 
-            # check if object can be placed on the floor
-            candidates = self.check_floor_placement(
-                candidates[:20], room_vertices, scene
+            # Check candidates actually match the object name
+            candidates = candidates[:15]
+            candidate_scores = compare_object_name_to_descriptions(
+                object_name=object_name.replace("_", " "),
+                asset_ids=[candidate[0] for candidate in candidates],
+                database=self.database,
+                llm=self.llm,
             )
+            score_and_val_candidate_list = list(zip(candidate_scores, candidates))
+            score_and_val_candidate_list.sort(key=lambda x: x[0], reverse=True)
+
+            candidates = [
+                candidate
+                for candidate_scores, candidate in score_and_val_candidate_list
+                if candidate_scores >= 5
+            ]
+
+            # check if object can be placed on the floor
+            candidates = self.check_floor_placement(candidates, room_vertices, scene)
 
             # No candidates found
             if len(candidates) == 0:
-                print(f"No candidates found for {object_type} {object_description}")
+                print(f"No candidates found for {object_name} {object_description}")
                 continue
 
             # remove used assets
@@ -401,7 +498,9 @@ class ObjectSelector:
                     object_size, candidates
                 )
 
-            candidates = candidates[:10]  # only select top 10 candidates
+            candidates = candidates[
+                :MAX_SINGLE_OBJ_QUANTITY
+            ]  # only select top 10 candidates
 
             selected_asset_ids = []
 
@@ -424,7 +523,7 @@ class ObjectSelector:
 
             for i in range(quantity):
                 selected_asset_id = selected_asset_ids[i]
-                object_name = f"{object_type}-{i}"
+                object_name = f"{object_name}-{i}"
                 selected_floor_objects_all.append(
                     (object_name, selected_asset_id, importance)
                 )
@@ -464,20 +563,21 @@ class ObjectSelector:
         wall_capacity,
         room_size,
         room_vertices,
-        scene,
+        scene: HolodeckScenePlanDict,
     ):
         selected_wall_objects_all = []
         for wall_object in wall_object_list:
-            object_type = wall_object["object_name"]
+            object_name = wall_object["object_name"]
             object_description = wall_object["description"]
             object_size = wall_object["size"]
             importance = wall_object["importance"]
             quantity = min(wall_object["quantity"], 10)
             variance_type = wall_object["variance_type"]
 
-            candidates = self.object_retriever.retrieve(
-                [f"a 3D model of {object_type}, {object_description}"],
-                self.similarity_threshold_wall,
+            candidates = self.object_retriever.retrieve_with_name_and_desc(
+                object_names=[object_name],
+                object_descriptions=[object_description],
+                threshold=self.similarity_threshold_wall,
             )
 
             # check on wall objects
@@ -513,7 +613,7 @@ class ObjectSelector:
             )
 
             if len(candidates) == 0:
-                print(f"No candidates found for {object_type} {object_description}")
+                print(f"No candidates found for {object_name} {object_description}")
                 continue
 
             # remove used assets
@@ -555,7 +655,7 @@ class ObjectSelector:
 
             for i in range(quantity):
                 selected_asset_id = selected_asset_ids[i]
-                object_name = f"{object_type}-{i}"
+                object_name = f"{object_name}-{i}"
                 selected_wall_objects_all.append(
                     (object_name, selected_asset_id, importance)
                 )

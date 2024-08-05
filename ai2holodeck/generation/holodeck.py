@@ -1,10 +1,12 @@
 import datetime
 import os
+import traceback
+from collections import defaultdict
 from typing import Optional, Dict, Any, Tuple, List
 
 import compress_json
 import open_clip
-from langchain.llms import OpenAI
+from colorama import Fore
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
@@ -17,12 +19,15 @@ from ai2holodeck.constants import (
     HOLODECK_THOR_FEATURES_DIR,
     HOLODECK_THOR_ANNOTATIONS_PATH,
     LLM_MODEL_NAME,
+    ABS_PATH_OF_HOLODECK,
 )
 from ai2holodeck.generation.ceiling_objects import CeilingObjectGenerator
 from ai2holodeck.generation.doors import DoorGenerator
 from ai2holodeck.generation.floor_objects import FloorObjectGenerator
+from ai2holodeck.generation.holodeck_types import HolodeckScenePlanDict
 from ai2holodeck.generation.layers import map_asset2layer
 from ai2holodeck.generation.lights import generate_lights
+from ai2holodeck.generation.llm import OpenAIWithTracking
 from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
 from ai2holodeck.generation.object_selector import ObjectSelector
 from ai2holodeck.generation.rooms import FloorPlanGenerator
@@ -32,6 +37,7 @@ from ai2holodeck.generation.utils import get_top_down_frame, room_video
 from ai2holodeck.generation.wall_objects import WallObjectGenerator
 from ai2holodeck.generation.walls import WallGenerator
 from ai2holodeck.generation.windows import WindowGenerator
+from objathor.annotation.annotation_utils import compute_llm_cost
 
 
 def confirm_paths_exist():
@@ -66,10 +72,11 @@ class Holodeck:
             os.environ["OPENAI_ORG"] = openai_org
 
         # initialize llm
-        self.llm = OpenAI(
-            model_name=LLM_MODEL_NAME,
+        self.llm = OpenAIWithTracking(
+            model=LLM_MODEL_NAME,
             max_tokens=2048,
             openai_api_key=openai_api_key,
+            verbose=False,
         )
 
         # initialize CLIP
@@ -137,7 +144,9 @@ class Holodeck:
         self.additional_requirements_ceiling = "N/A"
 
     def get_empty_scene(self):
-        return compress_json.load("generation/empty_house.json")
+        return compress_json.load(
+            os.path.join(ABS_PATH_OF_HOLODECK, "generation/empty_house.json")
+        )
 
     def empty_house(self, scene):
         scene["rooms"] = []
@@ -214,7 +223,9 @@ class Holodeck:
         scene["selected_objects"] = selected_objects
         return scene
 
-    def generate_ceiling_objects(self, scene, additional_requirements_ceiling="N/A"):
+    def generate_ceiling_objects(
+        self, scene: HolodeckScenePlanDict, additional_requirements_ceiling="N/A"
+    ):
         (
             raw_ceiling_plan,
             ceiling_objects,
@@ -225,7 +236,9 @@ class Holodeck:
         scene["raw_ceiling_plan"] = raw_ceiling_plan
         return scene
 
-    def generate_small_objects(self, scene, used_assets: Optional[List[str]] = None):
+    def generate_small_objects(
+        self, scene: HolodeckScenePlanDict, used_assets: Optional[List[str]] = None
+    ):
         if used_assets is not None:
             self.small_object_generator.used_assets = used_assets
 
@@ -244,15 +257,19 @@ class Holodeck:
         try:
             (
                 small_objects,
-                receptacle2small_objects,
-            ) = self.small_object_generator.generate_small_objects(
+                receptacle_id_to_small_objects,
+            ) = self.small_object_generator.select_small_objects_from_plan(
                 scene, controller, receptacle_ids
             )
             scene["small_objects"] = small_objects
-            scene["receptacle2small_objects"] = receptacle2small_objects
+            scene["receptacle_id_to_small_objects"] = receptacle_id_to_small_objects
         except:
             scene["small_objects"] = []
-            print("Failed to generate small objects")
+            print(
+                f"{Fore.RED}[ERROR] Could not generate small objects:"
+                f"\n{traceback.format_exc()}{Fore.RESET}",
+                flush=True,
+            )
 
         controller.stop()  # stop controller to avoid memory leak
         return scene
@@ -267,7 +284,7 @@ class Holodeck:
         scene,
         query: str,
         save_dir: str,
-        used_assets=[],
+        used_assets=None,
         add_ceiling=False,
         generate_image=True,
         generate_video=False,
@@ -276,6 +293,13 @@ class Holodeck:
         random_selection=False,
         use_milp=False,
     ) -> Tuple[Dict[str, Any], str]:
+
+        # Reset the LLM to track costs
+        self.llm.reset()
+
+        if used_assets is None:
+            used_assets = []
+
         # initialize scene
         query = query.replace("_", " ")
         scene["query"] = query
@@ -353,6 +377,23 @@ class Holodeck:
 
         # change ceiling material
         scene = self.change_ceiling_material(scene)
+
+        # Report total costs
+        usage_per_model = defaultdict(
+            lambda: {"prompt_tokens": 0, "completion_tokens": 0}
+        )
+        for q in self.llm.queries:
+            m = q["chat_kwargs"]["model"]
+            for k in usage_per_model[m]:
+                usage_per_model[m][k] += q[k]
+
+        for m, usage in usage_per_model.items():
+            usage["cost"] = compute_llm_cost(
+                input_tokens=usage["prompt_tokens"],
+                output_tokens=usage["completion_tokens"],
+                model=m,
+            )
+        print(f"Total costs and usage per model: {dict(**usage_per_model)}")
 
         # create folder
         query_name = query.replace(" ", "_").replace("'", "")[:30]

@@ -1,7 +1,8 @@
 import ast
 import json
-from tqdm import tqdm
 from argparse import ArgumentParser
+
+from tqdm import tqdm
 
 from ai2holodeck.generation.holodeck import Holodeck
 
@@ -76,7 +77,9 @@ if __name__ == "__main__":
         "--query", help="Query to generate scene from.", default="a living room"
     )
     parser.add_argument(
-        "--query_file", help="File to load queries from.", default="./data/queries.txt"
+        "--query_file",
+        help="File to load img_queries from.",
+        default="./data/img_queries.txt",
     )
     parser.add_argument(
         "--number_of_variants", help="Number of variants to generate.", default=5

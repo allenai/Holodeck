@@ -25,11 +25,18 @@ HOLODECK_THOR_ANNOTATIONS_PATH = os.path.join(
 )
 
 if ASSETS_VERSION > "2023_09_23":
-    THOR_COMMIT_ID = "8524eadda94df0ab2dbb2ef5a577e4d37c712897"
+    THOR_COMMIT_ID = "b92f8068d993d8242fb920808a2814cdb5f7ed6e"
 else:
-    THOR_COMMIT_ID = "3213d486cd09bcbafce33561997355983bdf8d1a"
+    THOR_COMMIT_ID = "b92f8068d993d8242fb920808a2814cdb5f7ed6e"
 
 # LLM_MODEL_NAME = "gpt-4-1106-preview"
 LLM_MODEL_NAME = "gpt-4o-2024-05-13"
+SMALL_LLM_MODEL_NAME = "gpt-4o-mini-2024-07-18"
 
 DEBUGGING = os.environ.get("DEBUGGING", "0").lower() in ["1", "true", "True", "t", "T"]
+
+MULTIPROCESSING = os.environ.get("MULTIPROCESSING", "1").lower() in [
+    "1",
+    "true",
+    "t",
+]

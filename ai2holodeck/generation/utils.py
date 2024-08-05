@@ -1,7 +1,9 @@
+import concurrent
+import concurrent.futures
 import copy
 import os
 from argparse import ArgumentParser
-from typing import Dict, Any
+from typing import Dict, Any, Sequence
 
 import compress_json
 import numpy as np
@@ -16,7 +18,11 @@ from moviepy.editor import (
 )
 from tqdm import tqdm
 
-from ai2holodeck.constants import HOLODECK_BASE_DATA_DIR, THOR_COMMIT_ID
+from ai2holodeck.constants import (
+    HOLODECK_BASE_DATA_DIR,
+    THOR_COMMIT_ID,
+    OBJATHOR_ASSETS_DIR,
+)
 
 
 def all_edges_white(img):
@@ -59,41 +65,51 @@ def get_top_down_frame(scene, objaverse_asset_dir, width=1024, height=1024):
 
     # Setup the top-down camera
     event = controller.step(action="GetMapViewCameraProperties", raise_for_failure=True)
+    orthographic_top_down_params = copy.deepcopy(event.metadata["actionReturn"])
+
     pose = copy.deepcopy(event.metadata["actionReturn"])
-
-    bounds = event.metadata["sceneBounds"]["size"]
-
-    pose["fieldOfView"] = 60
-    pose["position"]["y"] = bounds["y"]
-    del pose["orthographicSize"]
+    position = pose["position"]
+    position["y"] = event.metadata["sceneBounds"]["size"]["y"]
 
     try:
-        wall_height = wall_height = max(
-            [point["y"] for point in scene["walls"][0]["polygon"]]
-        )
+        wall_height = max([point["y"] for point in scene["walls"][0]["polygon"]])
     except:
         wall_height = 2.5
 
+    # add the camera to the scene
+    controller.step(
+        action="AddThirdPartyCamera",
+        skyboxColor="white",
+        raise_for_failure=True,
+        orthographic=False,
+        fieldOfView=60,
+        position=position,
+        rotation=pose["rotation"],
+    )
+
     for i in range(20):
-        pose["orthographic"] = False
-
-        pose["farClippingPlane"] = pose["position"]["y"] + 10
-        pose["nearClippingPlane"] = pose["position"]["y"] - wall_height
-
-        # add the camera to the scene
-        event = controller.step(
-            action="AddThirdPartyCamera",
-            **pose,
-            skyboxColor="white",
-            raise_for_failure=True,
+        controller.step(
+            "UpdateThirdPartyCamera",
+            thirdPartyCameraId=0,
+            position=position,
+            rotation=pose["rotation"],
+            farClippingPlane=position["y"] + 1000,
+            nearClippingPlane=position["y"] - (wall_height + 0.01),
         )
-        top_down_frame = event.third_party_camera_frames[-1]
+        top_down_frame = controller.last_event.third_party_camera_frames[-1]
 
         # check if the edge of the frame is white
-        if all_edges_white(top_down_frame):
+        if all_edges_white(top_down_frame) and not (top_down_frame > 240).all():
             break
 
-        pose["position"]["y"] += 0.75
+        position["y"] += 0.75
+    else:
+        controller.step(
+            "UpdateThirdPartyCamera",
+            thirdPartyCameraId=0,
+            **orthographic_top_down_params,
+        )
+        top_down_frame = controller.last_event.third_party_camera_frames[-1]
 
     controller.stop()
     image = Image.fromarray(top_down_frame)
@@ -472,6 +488,16 @@ def get_secondary_properties(obj_data: Dict[str, Any]):
     return am["secondaryProperties"]
 
 
+def unpack_kwargs(func):
+    def wrapper(*args, **kwargs):
+        if args and isinstance(args[0], Dict):
+            kwargs.update(args[0])
+            args = args[1:]
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument(
@@ -482,7 +508,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--objaverse_asset_dir",
         help="Directory to load assets from.",
-        default="./objaverse/processed_2023_09_23_combine_scale",
+        default=OBJATHOR_ASSETS_DIR,
     )
     parser.add_argument(
         "--scene",
@@ -512,3 +538,41 @@ if __name__ == "__main__":
         for room_name, images in room_images.items():
             for i, image in enumerate(images):
                 image.save(f"{save_folder}/{room_name}_{i}.png")
+
+
+def wait_for_futures_and_raise_errors(
+    futures: Sequence[concurrent.futures.Future],
+) -> Sequence[Any]:
+    results = []
+    concurrent.futures.wait(futures)
+    for future in futures:
+        try:
+            results.append(future.result())  # This will re-raise any exceptions
+        except Exception:
+            raise
+    return results
+
+
+class SingleProcessExecutor:
+    def __init__(self):
+        pass
+
+    def submit(self, func, *args, **kwargs) -> concurrent.futures.Future:
+        f = concurrent.futures.Future()
+        f.set_result(func(*args, **kwargs))
+        return f
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+def get_executor(multiprocessing: bool):
+    if multiprocessing:
+        return concurrent.futures.ThreadPoolExecutor(
+            max_workers=max(os.cpu_count() // 2, 2)
+        )
+    else:
+        return SingleProcessExecutor()

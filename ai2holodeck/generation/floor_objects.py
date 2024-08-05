@@ -2,7 +2,6 @@ import copy
 import datetime
 import json
 import math
-import multiprocessing
 import random
 import re
 import time
@@ -10,19 +9,25 @@ import time
 import editdistance
 import matplotlib.pyplot as plt
 import numpy as np
-from langchain import PromptTemplate, OpenAI
+from langchain import PromptTemplate
 from rtree import index
 from scipy.interpolate import interp1d
 from shapely.geometry import Polygon, Point, box, LineString
 
 import ai2holodeck.generation.prompts as prompts
+from ai2holodeck.constants import MULTIPROCESSING
+from ai2holodeck.generation.llm import OpenAIWithTracking
 from ai2holodeck.generation.milp_utils import *
 from ai2holodeck.generation.objaverse_retriever import ObjathorRetriever
-from ai2holodeck.generation.utils import get_bbox_dims
+from ai2holodeck.generation.utils import (
+    get_bbox_dims,
+    wait_for_futures_and_raise_errors,
+    get_executor,
+)
 
 
 class FloorObjectGenerator:
-    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAI):
+    def __init__(self, object_retriever: ObjathorRetriever, llm: OpenAIWithTracking):
         self.json_template = {
             "assetId": None,
             "id": None,
@@ -37,11 +42,11 @@ class FloorObjectGenerator:
         self.database = object_retriever.database
         self.constraint_prompt = PromptTemplate(
             input_variables=["room_type", "room_size", "objects"],
-            template=prompts.object_constraints_prompt,
+            template=prompts.OBJECT_CONSTRAINTS_PROMPT,
         )
         self.baseline_prompt = PromptTemplate(
             input_variables=["room_type", "room_size", "objects"],
-            template=prompts.floor_baseline_prompt,
+            template=prompts.FLOOR_BASELINE_PROMPT,
         )
         self.grid_density = 20
         self.add_window = False
@@ -49,7 +54,7 @@ class FloorObjectGenerator:
 
         self.constraint_type = "llm"
         self.use_milp = False
-        self.multiprocessing = False
+        self.multiprocessing = MULTIPROCESSING
 
     def generate_objects(self, scene, use_constraint=True):
         rooms = scene["rooms"]
@@ -59,27 +64,30 @@ class FloorObjectGenerator:
         selected_objects = scene["selected_objects"]
         results = []
 
-        packed_args = [
-            (room, doors, windows, open_walls, selected_objects, use_constraint)
-            for room in rooms
-        ]
-        if self.multiprocessing:
-            pool = multiprocessing.Pool(processes=4)
-            all_placements = pool.map(self.generate_objects_per_room, packed_args)
-            pool.close()
-            pool.join()
-        else:
-            all_placements = [
-                self.generate_objects_per_room(args) for args in packed_args
-            ]
+        with get_executor(self.multiprocessing) as executor:
+            all_placements = wait_for_futures_and_raise_errors(
+                [
+                    executor.submit(
+                        self.generate_objects_per_room,
+                        room=room,
+                        doors=doors,
+                        windows=windows,
+                        open_walls=open_walls,
+                        selected_objects=selected_objects,
+                        use_constraint=use_constraint,
+                    )
+                    for room in rooms
+                ]
+            )
 
         for placements in all_placements:
             results += placements
 
         return results
 
-    def generate_objects_per_room(self, args):
-        room, doors, windows, open_walls, selected_objects, use_constraint = args
+    def generate_objects_per_room(
+        self, room, doors, windows, open_walls, selected_objects, use_constraint
+    ):
 
         selected_floor_objects = selected_objects[room["roomType"]]["floor"]
         object_name2id = {
