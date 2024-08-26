@@ -48,10 +48,10 @@ Our system uses `gpt-4o-2024-05-13`, **so please ensure you have access to it.**
 
 ## Load the scene in Unity
 1. Install [Unity](https://unity.com/download) and select the editor version `2020.3.25f1`.
-2. Clone [AI2-THOR repository](https://github.com/allenai/ai2thor) and switch to the new_cam_adjust branch.
+2. Clone [AI2-THOR repository](https://github.com/allenai/ai2thor) and switch to the appropriate AI2-THOR commit.
 ```
 git clone https://github.com/allenai/ai2thor.git
-git checkout 6f165fdaf3cf2d03728f931f39261d14a67414d0
+git checkout 07445be8e91ddeb5de2915c90935c4aef27a241d
 ```
 3. Reinstall some packages:
 ```
