@@ -17,7 +17,7 @@ parser.add_argument(
     "--scene",
     help="the directory of the scene to be generated",
     default=os.path.join(
-        HOLODECK_BASE_DATA_DIR, "/scenes/a_living_room/a_living_room.json"
+        HOLODECK_BASE_DATA_DIR, "scenes/a_living_room/a_living_room.json"
     ),
 )
 parser.add_argument(
@@ -29,6 +29,7 @@ args = parser.parse_args()
 
 scene = compress_json.load(args.scene)
 
+print("Run Unity play now")
 controller = Controller(
     commit_id=THOR_COMMIT_ID,
     start_unity=False,

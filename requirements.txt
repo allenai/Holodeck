@@ -13,7 +13,7 @@ rtree
 scipy
 moviepy
 numpy
-openai==0.27.6
+openai
 langchain
 torch
 torchvision
@@ -23,5 +23,5 @@ Flask==2.0.1
 compress-pickle
 compress-json
 black
-objathor
+objathor>=0.0.7
 editdistance

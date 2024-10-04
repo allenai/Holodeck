@@ -1,5 +1,5 @@
 import os
-from typing import Tuple, Sequence, Optional
+from typing import Tuple, Sequence, Optional, Callable
 
 import compress_json
 import compress_pickle
@@ -9,6 +9,11 @@ import torch
 import torch.nn.functional as F
 import tqdm
 from filelock import FileLock
+from objathor.dataset.generate_holodeck_features import (
+    ObjectDatasetDirs,
+    DEFAULT_DEVICE,
+)
+from torch import nn
 from torch.utils.data import DataLoader
 
 from ai2holodeck.constants import (
@@ -18,17 +23,17 @@ from ai2holodeck.constants import (
     HOLODECK_THOR_FEATURES_DIR,
 )
 from ai2holodeck.generation.utils import get_bbox_dims_vec
-from objathor.dataset.generate_holodeck_features import ObjectDataset, DEFAULT_DEVICE
 
 
 class ObjathorRetriever:
     def __init__(
         self,
-        clip_model,
-        clip_preprocess,
-        clip_tokenizer,
-        sbert_model,
-        retrieval_threshold,
+        clip_model: nn.Module,
+        clip_preprocess: Callable,
+        clip_tokenizer: Callable,
+        sbert_model: nn.Module,
+        retrieval_threshold: float,
+        blender_thor_similarity_threshold: float = 0.6,
     ):
         objathor_annotations = compress_json.load(OBJATHOR_ANNOTATIONS_PATH)
         thor_annotations = compress_json.load(HOLODECK_THOR_ANNOTATIONS_PATH)
@@ -101,17 +106,18 @@ class ObjathorRetriever:
         self.sbert_model = sbert_model
 
         self.retrieval_threshold = retrieval_threshold
+        self.blender_thor_similarity_threshold = blender_thor_similarity_threshold
 
     def _load_clip_features_and_check_has_text(self, clip_features_path: str):
         with FileLock(clip_features_path + ".lock"):
             clip_features_dict = compress_pickle.load(clip_features_path)
-            if "text_features" not in clip_features_dict:
-                print(
-                    f"CLIP text features not found in {clip_features_path}. We will add these now, but this may take a while."
-                )
-
-            else:
+            if "text_features" in clip_features_dict:
                 return clip_features_dict
+
+            print(
+                f"Clip features at {clip_features_path} do not have text features."
+                f" Will attempt to generate these, but this may take a while."
+            )
 
             annotations = {
                 uid: self.database[uid] for uid in clip_features_dict["uids"]
@@ -122,7 +128,7 @@ class ObjathorRetriever:
                     or ann["description_auto"] is not None
                 )
 
-            dataset = ObjectDataset(
+            dataset = ObjectDatasetDirs(
                 annotations=annotations,
                 asset_dir=None,
                 image_preprocessor=None,
@@ -255,7 +261,12 @@ class ObjathorRetriever:
         unsorted_results = []
         for query_index, asset_index in zip(*threshold_indices):
             score = joint_similiarities[query_index, asset_index].item()
-            unsorted_results.append((self.asset_ids[asset_index], score))
+
+            asset_id = self.asset_ids[asset_index]
+
+            similarity = self.database[asset_id].get("blender_thor_similarity", 1.0)
+            if similarity >= self.blender_thor_similarity_threshold:
+                unsorted_results.append((asset_id, score))
 
         # Sorting the results in descending order by score
         results = sorted(unsorted_results, key=lambda x: x[1], reverse=True)

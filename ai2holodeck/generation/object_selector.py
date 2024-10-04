@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Sequence, Any
 import torch
 import torch.nn.functional as F
 from colorama import Fore
+from objathor.utils.queries import Text
 from shapely import Polygon
 
 import ai2holodeck.generation.prompts as prompts
@@ -30,7 +31,6 @@ from ai2holodeck.generation.utils import (
     wait_for_futures_and_raise_errors,
 )
 from ai2holodeck.generation.wall_objects import DFS_Solver_Wall
-from objathor.utils.queries import Text
 
 EXPECTED_OBJECT_ATTRIBUTES = [
     "description",
@@ -815,9 +815,15 @@ class ObjectSelector:
             if solutions != []:
                 valid_candidates.append(candidate)
             else:
-                print(
-                    f"Floor Object {candidate[0]} (size: {object_dim}) cannot be placed in room"
-                )
+                try:
+                    print(
+                        f"Floor Object {candidate[0]} (size: {object_dim}) cannot be placed in room"
+                    )
+                except:
+                    try:
+                        print(f"Error with {candidate}")
+                    except:
+                        pass
                 continue
 
         return valid_candidates

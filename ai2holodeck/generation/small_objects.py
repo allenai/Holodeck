@@ -1,6 +1,8 @@
 import copy
 import itertools
+import os
 import random
+import traceback
 import warnings
 from typing import Sequence, Tuple, Dict, List, Any, Optional
 
@@ -8,11 +10,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from ai2thor.controller import Controller
-from ai2thor.hooks.procedural_asset_hook import ProceduralAssetHookRunner
 from procthor.constants import FLOOR_Y
 from procthor.utils.types import Vector3
 
-from ai2holodeck.constants import THOR_COMMIT_ID, MULTIPROCESSING
+from ai2holodeck.constants import (
+    THOR_COMMIT_ID,
+    MULTIPROCESSING,
+    PROCEDURAL_ASSET_HOOK_RUNNER,
+)
 from ai2holodeck.generation.holodeck_types import (
     HolodeckScenePlanDict,
     ObjectPlanForSceneDict,
@@ -222,9 +227,6 @@ class SmallObjectGenerator:
                 )
             )
 
-    def _select_small_object_instances_on_receptacle(self, kwargs):
-        return self.select_small_object_instances_on_receptacle(**kwargs)
-
     def select_small_object_instances_on_receptacle(
         self,
         receptacle_id: str,
@@ -347,22 +349,30 @@ class SmallObjectGenerator:
 
         return receptacle_id, ordered_small_objects
 
-    def start_controller(self, scene, objaverse_dir):
-        controller = Controller(
-            commit_id=THOR_COMMIT_ID,
-            agentMode="default",
-            makeAgentsVisible=False,
-            visibilityDistance=1.5,
-            scene=scene,
-            width=224,
-            height=224,
-            fieldOfView=40,
-            action_hook_runner=ProceduralAssetHookRunner(
-                asset_directory=objaverse_dir,
-                asset_symlink=True,
-                verbose=True,
-            ),
-        )
+    def start_controller(self, scene: Dict[str, Any], objaverse_dir: str):
+        assert os.path.abspath(
+            PROCEDURAL_ASSET_HOOK_RUNNER.asset_directory
+        ) == os.path.abspath(objaverse_dir)
+        retries = 5
+        for retry in range(retries):
+            try:
+                controller = Controller(
+                    commit_id=THOR_COMMIT_ID,
+                    agentMode="default",
+                    makeAgentsVisible=False,
+                    visibilityDistance=1.5,
+                    scene=scene,
+                    width=224,
+                    height=224,
+                    fieldOfView=40,
+                    action_hook_runner=PROCEDURAL_ASSET_HOOK_RUNNER,
+                    server_start_timeout=30,
+                )
+                break
+            except TimeoutError:
+                if retry == retries - 1:
+                    raise
+
         return controller
 
     def attempt_to_place_object_on_receptacle_in_scene(
@@ -412,12 +422,20 @@ class SmallObjectGenerator:
             return obj
 
         def object_placed_successfully():
-            return (
-                receptacle_id
-                in controller.step(
-                    "CheckWhatObjectOn", objectId=generated_id, belowDistance=2e-2
-                ).metadata["actionReturn"]
-            )
+            try:
+                return (
+                    receptacle_id
+                    in controller.step(
+                        "CheckWhatObjectOn", objectId=generated_id, belowDistance=2e-2
+                    ).metadata["actionReturn"]
+                )
+            except (SystemExit, KeyboardInterrupt):
+                raise
+            except:
+                print(
+                    f"ERROR occurred for {receptacle_id}, {generated_id}, with controller {controller}:\n{traceback.format_exc()}"
+                )
+                return False
 
         # Place the object in the receptacle
         # Question: Can I spawn multiple objects at once?

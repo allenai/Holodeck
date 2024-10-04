@@ -24,25 +24,27 @@ After cloning the repo, you can install the required dependencies using the foll
 conda create --name holodeck python=3.10
 conda activate holodeck
 pip install -r requirements.txt
-pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+40679c517859e09c1f2a5e39b65ee7f33fcfdd48
+pip install --extra-index-url https://ai2thor-pypi.allenai.org ai2thor==0+455cf72a1c8e0759a452422f2128fbc93a3cb06b
 ```
 
 ## Data
 Download the data by running the following commands:
 ```bash
-python -m objathor.dataset.download_holodeck_metadata --version 2023_09_23
-python -m objathor.dataset.download_assets --version 2023_09_23
-python -m objathor.dataset.download_annotations --version 2023_09_23
-python -m objathor.dataset.download_features --version 2023_09_23
+python -m objathor.dataset.download_holodeck_metadata --version 2023_09_23 # This is correct and differs from 2024_08_16 intentionally  
+python -m objathor.dataset.download_annotations --version 2024_08_16
+python -m objathor.dataset.download_features --version 2024_08_16
 ```
-by default these will save to `~/.objathor-assets/...`, you can change this director by specifying the `--path` argument.  If you change the `--path`, you'll need to set the `OBJAVERSE_ASSETS_DIR` environment variable to the path where the assets are stored when you use Holodeck.
+by default these will save to `~/.objathor-assets/...`, you can change this director by specifying the `--path` argument.  If you change the `--path`, you'll need to set the `OBJAVERSE_ASSETS_DIR` environment variable to the path where the assets are stored when you use Holodeck. When using the `2024_08_16` version of the assets (as above) the optimized objathor assets will be downloaded "just in time" as holodeck needs them. If you wish to use a different version of the objathor assets (e.g. `2023_09_23`) you should change `2024_08_16` to the correct version in the above commands and also download all of the relevant assets by running:
+```bash
+python -m objathor.dataset.download_assets --version <ASSET_VERSION_YOU_WANT>
+```
 
 ## Usage
 You can use the following command to generate a new environment.
 ```
 python holodeck/main.py --query "a living room" --openai_api_key <OPENAI_API_KEY>
 ```
-Our system uses `gpt-4-1106-preview`, **so please ensure you have access to it.**
+Our system uses `gpt-4o`, **so please ensure you have access to it.**
 
 **Note:** To yield better layouts, use `DFS` as the solver. If you pull the repo before `12/28/2023`, you must set the [argument](https://github.com/allenai/Holodeck/blob/386b0a868def29175436dc3b1ed85b6309eb3cad/main.py#L78) `--use_milp` to `False` to use `DFS`.
 
@@ -51,7 +53,7 @@ Our system uses `gpt-4-1106-preview`, **so please ensure you have access to it.*
 2. Clone [AI2-THOR repository](https://github.com/allenai/ai2thor) and switch to the new_cam_adjust branch.
 ```
 git clone https://github.com/allenai/ai2thor.git
-git checkout 6f165fdaf3cf2d03728f931f39261d14a67414d0
+git checkout 455cf72a1c8e0759a452422f2128fbc93a3cb06b
 ```
 3. Reinstall some packages:
 ```
